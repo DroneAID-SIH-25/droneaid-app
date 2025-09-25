@@ -3,9 +3,8 @@ import '../models/mission.dart';
 import '../models/emergency_request.dart';
 import '../models/drone.dart';
 import '../models/user.dart';
-import '../models/mission.dart';
 
-// Using MissionStatus from mission.dart model
+// Using MissionType, MissionStatus, and MissionPriority from mission.dart model
 
 class MissionProvider extends ChangeNotifier {
   List<Mission> _missions = [];
@@ -134,20 +133,27 @@ class MissionProvider extends ChangeNotifier {
       Mission(
         id: 'mission_001',
         emergencyRequestId: 'req_002',
-        droneId: 'drone_001',
-        operatorId: 'gcs_123',
+        assignedDroneId: 'drone_001',
+        assignedOperatorId: 'gcs_123',
         title: 'Flood Evacuation Assistance',
         description:
             'Deploy drone for flood evacuation assessment and coordination',
         status: MissionStatus.inProgress,
-        priority: Priority.high,
+        type: MissionType.evacuation,
+        priority: MissionPriority.high,
         createdAt: DateTime.now().subtract(const Duration(minutes: 10)),
-        startedAt: DateTime.now().subtract(const Duration(minutes: 5)),
-        estimatedDuration: 30,
+        actualStartTime: DateTime.now().subtract(const Duration(minutes: 5)),
+        estimatedDuration: const Duration(minutes: 30),
         targetLocation: LocationData(
           latitude: 28.5355,
           longitude: 77.3910,
           address: 'Sector 62, Noida',
+          timestamp: DateTime.now(),
+        ),
+        startLocation: LocationData(
+          latitude: 28.6139,
+          longitude: 77.2090,
+          address: 'Delhi Control Center',
           timestamp: DateTime.now(),
         ),
         waypoints: [],
@@ -236,15 +242,17 @@ class MissionProvider extends ChangeNotifier {
       final mission = Mission(
         id: 'mission_${DateTime.now().millisecondsSinceEpoch}',
         emergencyRequestId: requestId,
-        droneId: droneId,
-        operatorId: operatorId,
+        assignedDroneId: droneId,
+        assignedOperatorId: operatorId,
         title: 'Emergency Response: ${request.emergencyType.name}',
         description: request.description,
         status: MissionStatus.assigned,
-        priority: request.priority,
+        type: MissionType.emergencyResponse,
+        priority: MissionPriority.high,
         createdAt: DateTime.now(),
-        estimatedDuration: 45, // Default 45 minutes
+        estimatedDuration: const Duration(minutes: 45), // Default 45 minutes
         targetLocation: request.location,
+        startLocation: _availableDrones[droneIndex].location,
         waypoints: [],
       );
 
@@ -308,16 +316,18 @@ class MissionProvider extends ChangeNotifier {
       _missions[missionIndex] = Mission(
         id: mission.id,
         emergencyRequestId: mission.emergencyRequestId,
-        droneId: mission.droneId,
-        operatorId: mission.operatorId,
+        assignedDroneId: mission.assignedDroneId,
+        assignedOperatorId: mission.assignedOperatorId,
         title: mission.title,
         description: mission.description,
         status: MissionStatus.inProgress,
+        type: mission.type,
         priority: mission.priority,
         createdAt: mission.createdAt,
-        startedAt: DateTime.now(),
+        actualStartTime: DateTime.now(),
         estimatedDuration: mission.estimatedDuration,
         targetLocation: mission.targetLocation,
+        startLocation: mission.startLocation,
         waypoints: mission.waypoints,
       );
 
@@ -372,16 +382,18 @@ class MissionProvider extends ChangeNotifier {
       _missions[missionIndex] = Mission(
         id: mission.id,
         emergencyRequestId: mission.emergencyRequestId,
-        droneId: mission.droneId,
-        operatorId: mission.operatorId,
+        assignedDroneId: mission.assignedDroneId,
+        assignedOperatorId: mission.assignedOperatorId,
         title: mission.title,
         description: mission.description,
         status: MissionStatus.completed,
+        type: mission.type,
         priority: mission.priority,
         createdAt: mission.createdAt,
-        startedAt: mission.startedAt,
-        completedAt: DateTime.now(),
+        actualStartTime: mission.actualStartTime,
+        actualEndTime: DateTime.now(),
         estimatedDuration: mission.estimatedDuration,
+        startLocation: mission.startLocation,
         targetLocation: mission.targetLocation,
         waypoints: mission.waypoints,
         completionNotes: completionNotes,
@@ -389,7 +401,7 @@ class MissionProvider extends ChangeNotifier {
 
       // Update drone status back to active
       final droneIndex = _availableDrones.indexWhere(
-        (d) => d.id == mission.droneId,
+        (d) => d.id == mission.assignedDroneId,
       );
       if (droneIndex != -1) {
         _availableDrones[droneIndex] = Drone(
@@ -458,15 +470,17 @@ class MissionProvider extends ChangeNotifier {
       _missions[missionIndex] = Mission(
         id: mission.id,
         emergencyRequestId: mission.emergencyRequestId,
-        droneId: mission.droneId,
-        operatorId: mission.operatorId,
+        assignedDroneId: mission.assignedDroneId,
+        assignedOperatorId: mission.assignedOperatorId,
         title: mission.title,
         description: mission.description,
         status: MissionStatus.cancelled,
+        type: mission.type,
         priority: mission.priority,
         createdAt: mission.createdAt,
-        startedAt: mission.startedAt,
+        actualStartTime: mission.actualStartTime,
         estimatedDuration: mission.estimatedDuration,
+        startLocation: mission.startLocation,
         targetLocation: mission.targetLocation,
         waypoints: mission.waypoints,
         completionNotes: cancellationReason,
@@ -474,7 +488,7 @@ class MissionProvider extends ChangeNotifier {
 
       // Update drone status back to active
       final droneIndex = _availableDrones.indexWhere(
-        (d) => d.id == mission.droneId,
+        (d) => d.id == mission.assignedDroneId,
       );
       if (droneIndex != -1) {
         _availableDrones[droneIndex] = Drone(
