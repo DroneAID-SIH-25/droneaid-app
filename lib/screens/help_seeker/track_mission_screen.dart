@@ -5,9 +5,7 @@ import '../../core/utils/app_theme.dart';
 import '../../routes/app_router.dart';
 
 class TrackMissionScreen extends StatefulWidget {
-  final String missionId;
-
-  const TrackMissionScreen({super.key, required this.missionId});
+  const TrackMissionScreen({super.key});
 
   @override
   State<TrackMissionScreen> createState() => _TrackMissionScreenState();
@@ -56,7 +54,7 @@ class _TrackMissionScreenState extends State<TrackMissionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Track Mission #${widget.missionId}'),
+        title: const Text('Track Mission'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

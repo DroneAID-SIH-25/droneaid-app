@@ -100,12 +100,9 @@ class AppRouter {
                 builder: (context, state) => const MyRequestsScreen(),
               ),
               GoRoute(
-                path: '/track-mission/:missionId',
+                path: '/track-mission',
                 name: 'trackMission',
-                builder: (context, state) {
-                  final missionId = state.pathParameters['missionId']!;
-                  return TrackMissionScreen(missionId: missionId);
-                },
+                builder: (context, state) => const TrackMissionScreen(),
               ),
             ],
           ),
@@ -210,8 +207,8 @@ class AppRouter {
     _router.goNamed('myRequests');
   }
 
-  static void goToTrackMission(String missionId) {
-    _router.goNamed('trackMission', pathParameters: {'missionId': missionId});
+  static void goToTrackMission() {
+    _router.goNamed('trackMission');
   }
 
   static void goToDroneFleet() {

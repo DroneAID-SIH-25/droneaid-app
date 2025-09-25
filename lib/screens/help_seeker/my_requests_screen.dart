@@ -538,6 +538,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   void _trackMission(String requestId) {
     Navigator.pop(context);
-    AppRouter.goToTrackMission(requestId);
+    AppRouter.goToTrackMission();
   }
 }

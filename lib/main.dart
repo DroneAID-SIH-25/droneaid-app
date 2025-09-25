@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'core/constants/app_constants.dart';
+
 import 'core/constants/app_strings.dart';
 import 'core/utils/app_theme.dart';
+import 'providers/location_provider.dart';
+import 'providers/drone_tracking_provider.dart';
+import 'providers/emergency_provider.dart';
+import 'providers/notification_provider.dart';
+
+import 'providers/mission_provider.dart';
 import 'routes/app_router.dart';
 
 void main() async {
@@ -29,43 +35,68 @@ void main() async {
     ),
   );
 
-  runApp(const ProviderScope(child: DroneAidApp()));
+  runApp(const DroneAidApp());
 }
 
-class DroneAidApp extends ConsumerWidget {
+class DroneAidApp extends StatelessWidget {
   const DroneAidApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return MaterialApp.router(
-      title: AppStrings.appName,
-      debugShowCheckedModeBanner: false,
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        // Core providers
+        ChangeNotifierProvider(create: (_) => LocationProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationProvider()),
+        ChangeNotifierProvider(create: (_) => MissionProvider()),
 
-      // Theme configuration
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-
-      // Router configuration
-      routerConfig: AppRouter.router,
-
-      // Localization (can be extended later)
-      supportedLocales: const [
-        Locale('en', 'US'),
-        Locale('hi', 'IN'), // Hindi support for India
-      ],
-
-      // Builder for additional configurations
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: const TextScaler.linear(
-              1.0,
-            ), // Prevent text scaling issues
+        // Dependent providers
+        ChangeNotifierProxyProvider<LocationProvider, DroneTrackingProvider>(
+          create: (context) => DroneTrackingProvider(
+            Provider.of<LocationProvider>(context, listen: false),
           ),
-          child: child ?? const SizedBox(),
-        );
-      },
+          update: (context, locationProvider, droneProvider) =>
+              droneProvider ?? DroneTrackingProvider(locationProvider),
+        ),
+
+        ChangeNotifierProxyProvider<LocationProvider, EmergencyProvider>(
+          create: (context) => EmergencyProvider(
+            Provider.of<LocationProvider>(context, listen: false),
+          ),
+          update: (context, locationProvider, emergencyProvider) =>
+              emergencyProvider ?? EmergencyProvider(locationProvider),
+        ),
+      ],
+      child: AppInitializer(
+        child: MaterialApp.router(
+          title: AppStrings.appName,
+          debugShowCheckedModeBanner: false,
+
+          // Theme configuration
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: ThemeMode.system,
+
+          // Router configuration
+          routerConfig: AppRouter.router,
+
+          // Localization
+          supportedLocales: const [
+            Locale('en', 'US'),
+            Locale('hi', 'IN'), // Hindi support for India
+          ],
+
+          // Builder for additional configurations
+          builder: (context, child) {
+            return MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.0)),
+              child: child ?? const SizedBox(),
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -81,7 +112,7 @@ class AppInitializer extends StatefulWidget {
 
 class _AppInitializerState extends State<AppInitializer> {
   bool _isInitialized = false;
-  String _initializationMessage = 'Initializing...';
+  String _initializationMessage = 'Initializing Drone AID...';
 
   @override
   void initState() {
@@ -91,38 +122,40 @@ class _AppInitializerState extends State<AppInitializer> {
 
   Future<void> _initialize() async {
     try {
+      // Initialize location services
       setState(() {
-        _initializationMessage = 'Setting up local storage...';
+        _initializationMessage = 'Setting up location services...';
       });
+      await Future.delayed(const Duration(milliseconds: 800));
 
-      // Initialize local storage boxes
-      await Future.delayed(const Duration(milliseconds: 500));
-
+      // Initialize notification system
       setState(() {
-        _initializationMessage = 'Loading user preferences...';
+        _initializationMessage = 'Configuring notification system...';
       });
+      await Future.delayed(const Duration(milliseconds: 600));
 
-      // Load user preferences
-      await Future.delayed(const Duration(milliseconds: 500));
-
+      // Initialize emergency system
       setState(() {
-        _initializationMessage = 'Checking location permissions...';
+        _initializationMessage = 'Loading emergency protocols...';
       });
+      await Future.delayed(const Duration(milliseconds: 700));
 
-      // Check location permissions
-      await Future.delayed(const Duration(milliseconds: 500));
-
+      // Initialize drone tracking
       setState(() {
-        _initializationMessage = 'Ready to launch!';
+        _initializationMessage = 'Connecting to drone network...';
       });
+      await Future.delayed(const Duration(milliseconds: 900));
 
+      // Final setup
+      setState(() {
+        _initializationMessage = 'System ready!';
+      });
       await Future.delayed(const Duration(milliseconds: 500));
 
       setState(() {
         _isInitialized = true;
       });
     } catch (e) {
-      // Handle initialization errors
       debugPrint('Initialization error: $e');
       setState(() {
         _isInitialized = true; // Continue even with errors
@@ -137,72 +170,147 @@ class _AppInitializerState extends State<AppInitializer> {
         title: AppStrings.appName,
         theme: AppTheme.lightTheme,
         home: Scaffold(
-          backgroundColor: Theme.of(context).primaryColor,
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // App logo placeholder
-                Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFF1976D2),
+                  const Color(0xFF1976D2).withValues(alpha: 0.8),
+                ],
+              ),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // App logo with drone animation
+                  Container(
+                    width: 140,
+                    height: 140,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(
+                          Icons.flight,
+                          size: 70,
+                          color: const Color(0xFF1976D2),
+                        ),
+                        Positioned(
+                          bottom: 20,
+                          right: 20,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // App name with bold styling
+                  const Text(
+                    AppStrings.appName,
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Enhanced tagline
+                  const Text(
+                    'Emergency Drone Response System',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w300,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Help is always nearby',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white60,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  const SizedBox(height: 60),
+
+                  // Enhanced loading indicator
+                  Container(
+                    width: 60,
+                    height: 60,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: const CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      strokeWidth: 3,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Initialization message with better styling
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _initializationMessage,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
                       ),
-                    ],
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.flight,
-                    size: 60,
-                    color: Color(0xFF1976D2),
+                  const SizedBox(height: 60),
+
+                  // Footer info
+                  const Text(
+                    'Made in India 🇮🇳',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white60,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 32),
-
-                // App name
-                const Text(
-                  AppStrings.appName,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                  const SizedBox(height: 4),
+                  const Text(
+                    AppStrings.poweredBy,
+                    style: TextStyle(fontSize: 12, color: Colors.white54),
                   ),
-                ),
-                const SizedBox(height: 8),
-
-                // Tagline
-                const Text(
-                  AppStrings.appTagline,
-                  style: TextStyle(fontSize: 16, color: Colors.white70),
-                ),
-                const SizedBox(height: 48),
-
-                // Loading indicator
-                const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-                const SizedBox(height: 16),
-
-                // Initialization message
-                Text(
-                  _initializationMessage,
-                  style: const TextStyle(fontSize: 14, color: Colors.white70),
-                ),
-
-                const SizedBox(height: 48),
-
-                // Team name
-                const Text(
-                  AppStrings.poweredBy,
-                  style: TextStyle(fontSize: 12, color: Colors.white60),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
