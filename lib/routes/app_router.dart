@@ -11,6 +11,7 @@ import '../screens/help_seeker/help_seeker_dashboard.dart';
 import '../screens/help_seeker/request_help_screen.dart';
 import '../screens/help_seeker/my_requests_screen.dart';
 import '../screens/help_seeker/track_mission_screen.dart';
+import '../screens/gcs/gcs_main_screen.dart';
 import '../screens/gcs/gcs_dashboard.dart';
 import '../screens/gcs/drone_fleet_screen.dart';
 import '../screens/gcs/missions_screen.dart';
@@ -118,9 +119,14 @@ class AppRouter {
         routes: [
           GoRoute(
             path: '/gcs',
-            name: 'gcsDashboard',
-            builder: (context, state) => const GCSDashboard(),
+            name: 'gcsMain',
+            builder: (context, state) => const GCSMainScreen(),
             routes: [
+              GoRoute(
+                path: '/dashboard',
+                name: 'gcsDashboard',
+                builder: (context, state) => const GCSDashboard(),
+              ),
               GoRoute(
                 path: '/drone-fleet',
                 name: 'droneFleet',
@@ -193,6 +199,10 @@ class AppRouter {
 
   static void goToHelpSeekerDashboard() {
     _router.goNamed('helpSeekerDashboard');
+  }
+
+  static void goToGCSMain() {
+    _router.goNamed('gcsMain');
   }
 
   static void goToGCSDashboard() {
@@ -327,55 +337,9 @@ class GCSShell extends StatefulWidget {
 }
 
 class _GCSShellState extends State<GCSShell> {
-  int _currentIndex = 0;
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: widget.child,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-          switch (index) {
-            case 0:
-              AppRouter.goToGCSDashboard();
-              break;
-            case 1:
-              AppRouter.goToDroneFleet();
-              break;
-            case 2:
-              AppRouter.goToMissions();
-              break;
-            case 3:
-              AppRouter.goToEmergencyRequests();
-              break;
-            case 4:
-              AppRouter.goToProfile();
-              break;
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.flight), label: 'Drones'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assignment),
-            label: 'Missions',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.emergency),
-            label: 'Requests',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
-    );
+    return widget.child;
   }
 }
 

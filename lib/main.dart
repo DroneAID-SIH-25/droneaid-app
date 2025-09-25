@@ -9,6 +9,7 @@ import 'providers/location_provider.dart';
 import 'providers/drone_tracking_provider.dart';
 import 'providers/emergency_provider.dart';
 import 'providers/notification_provider.dart';
+import 'providers/group_management_provider.dart';
 
 import 'providers/mission_provider.dart';
 import 'routes/app_router.dart';
@@ -49,6 +50,7 @@ class DroneAidApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ChangeNotifierProvider(create: (_) => MissionProvider()),
+        ChangeNotifierProvider(create: (_) => GroupManagementProvider()),
 
         // Dependent providers
         ChangeNotifierProxyProvider<LocationProvider, DroneTrackingProvider>(

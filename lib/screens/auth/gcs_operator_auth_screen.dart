@@ -82,7 +82,7 @@ class _GCSOperatorAuthScreenState extends ConsumerState<GCSOperatorAuthScreen>
 
     ref.listen<AuthState>(authProvider, (previous, next) {
       if (next.isAuthenticated && next.userType == AppUserType.gcsOperator) {
-        AppRouter.goToGCSDashboard();
+        AppRouter.goToGCSMain();
       } else if (next.errorMessage != null &&
           previous?.errorMessage != next.errorMessage) {
         _showErrorSnackBar(context, next.errorMessage!);

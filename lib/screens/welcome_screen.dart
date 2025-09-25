@@ -71,7 +71,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
         if (authState.userType == AppUserType.helpSeeker) {
           AppRouter.goToHelpSeekerDashboard();
         } else if (authState.userType == AppUserType.gcsOperator) {
-          AppRouter.goToGCSDashboard();
+          AppRouter.goToGCSMain();
         }
       } else {
         // Navigate to user type selection after a delay

@@ -221,7 +221,7 @@ class _VerificationLoadingScreenState
           if (authState.userType == AppUserType.helpSeeker) {
             AppRouter.goToHelpSeekerDashboard();
           } else {
-            AppRouter.goToGCSDashboard();
+            AppRouter.goToGCSMain();
           }
         } else {
           AppRouter.goToUserTypeSelection();
