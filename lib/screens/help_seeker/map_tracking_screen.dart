@@ -512,6 +512,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
       child: ScaleTransition(
         scale: _fabAnimation,
         child: FloatingActionButton.extended(
+          heroTag: "emergency_fab",
           onPressed: _showEmergencyDialog,
           backgroundColor: AppColors.error,
           foregroundColor: Colors.white,
@@ -534,6 +535,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
         children: [
           // My location button
           FloatingActionButton(
+            heroTag: "location_fab",
             mini: true,
             onPressed: _goToMyLocation,
             backgroundColor: Colors.white,
@@ -544,6 +546,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
 
           // Toggle geofence
           FloatingActionButton(
+            heroTag: "geofence_fab",
             mini: true,
             onPressed: _toggleGeofence,
             backgroundColor: Colors.white,
@@ -558,6 +561,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
 
           // Toggle drone details
           FloatingActionButton(
+            heroTag: "drone_details_fab",
             mini: true,
             onPressed: () {
               setState(() {
@@ -624,10 +628,16 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
 
       // Geofence circle
       if (_showGeofence) {
+        // Validate and clamp geofence radius
+        double validatedRadius = droneProvider.geofenceRadius.clamp(
+          1.0,
+          50000.0,
+        );
+
         circles.add(
           map_widget.MapCircle(
             center: LatLng(userLocation.latitude, userLocation.longitude),
-            radius: droneProvider.geofenceRadius,
+            radius: validatedRadius,
             color: AppColors.primary.withValues(alpha: 0.1),
             borderColor: AppColors.primary.withValues(alpha: 0.5),
             borderWidth: 2,

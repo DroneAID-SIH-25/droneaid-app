@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../constants/app_colors.dart';
+import '../../services/location_service.dart';
+import '../../models/user.dart';
 
 /// Emergency Response Map Widget using Flutter Map
 class MapWidget extends StatefulWidget {
@@ -43,12 +45,59 @@ class MapWidget extends StatefulWidget {
 class _MapWidgetState extends State<MapWidget> {
   late MapController _mapController;
   MapType _currentMapType = MapType.street;
+  final LocationService _locationService = LocationService();
+  LocationData? _currentLocation;
+  bool _locationLoading = false;
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
     _currentMapType = widget.mapType;
+    if (widget.showCurrentLocation) {
+      _getCurrentLocation();
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    if (_locationLoading) return;
+
+    setState(() {
+      _locationLoading = true;
+    });
+
+    try {
+      final location = await _locationService.getCurrentLocation();
+      if (location != null && mounted) {
+        setState(() {
+          _currentLocation = location;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error getting current location: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _locationLoading = false;
+        });
+      }
+    }
+  }
+
+  void _moveToCurrentLocation() async {
+    await _getCurrentLocation();
+    if (_currentLocation != null) {
+      _mapController.move(
+        LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
+        15.0,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _locationService.dispose();
+    super.dispose();
   }
 
   @override
@@ -84,16 +133,20 @@ class _MapWidgetState extends State<MapWidget> {
           urlTemplate: _getTileUrlTemplate(),
           userAgentPackageName: 'com.droneaid.emergency',
           maxNativeZoom: 19,
+          errorTileCallback: (tile, error, stackTrace) {
+            debugPrint('Tile loading error: $error');
+          },
         ),
 
         // Circles Layer
         if (widget.circles != null && widget.circles!.isNotEmpty)
           CircleLayer(
             circles: widget.circles!
+                .where((circle) => _isValidCircle(circle))
                 .map(
                   (circle) => CircleMarker(
                     point: circle.center,
-                    radius: circle.radius,
+                    radius: _clampRadius(circle.radius),
                     color: circle.color,
                     borderColor: circle.borderColor,
                     borderStrokeWidth: circle.borderWidth,
@@ -133,11 +186,14 @@ class _MapWidgetState extends State<MapWidget> {
           ),
 
         // Current Location Layer
-        if (widget.showCurrentLocation)
+        if (widget.showCurrentLocation && _currentLocation != null)
           MarkerLayer(
             markers: [
               Marker(
-                point: LatLng(widget.latitude, widget.longitude),
+                point: LatLng(
+                  _currentLocation!.latitude,
+                  _currentLocation!.longitude,
+                ),
                 width: 20.0,
                 height: 20.0,
                 child: Container(
@@ -147,9 +203,9 @@ class _MapWidgetState extends State<MapWidget> {
                     border: Border.all(color: Colors.white, width: 3),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        blurRadius: 10,
-                        spreadRadius: 5,
+                        color: AppColors.primary.withOpacity(0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
@@ -187,6 +243,43 @@ class _MapWidgetState extends State<MapWidget> {
             ),
           ),
 
+          if (widget.showLocationButton) ...[
+            const SizedBox(height: 8),
+            // Current Location Button
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: IconButton(
+                onPressed: _locationLoading ? null : _moveToCurrentLocation,
+                icon: _locationLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primary,
+                        ),
+                      )
+                    : Icon(
+                        Icons.my_location,
+                        color: _currentLocation != null
+                            ? AppColors.primary
+                            : Colors.grey,
+                      ),
+                tooltip: 'Current Location',
+              ),
+            ),
+          ],
+
           if (widget.showZoomControls) ...[
             const SizedBox(height: 8),
             // Zoom Controls
@@ -196,7 +289,7 @@ class _MapWidgetState extends State<MapWidget> {
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
+                    color: Colors.black.withOpacity(0.2),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                   ),
@@ -254,9 +347,9 @@ class _MapWidgetState extends State<MapWidget> {
       case MapType.satellite:
         return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
       case MapType.terrain:
-        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}';
+        return 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
       case MapType.street:
-        return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
     }
   }
 
@@ -306,6 +399,28 @@ class _MapWidgetState extends State<MapWidget> {
       LatLng(widget.latitude, widget.longitude),
       _mapController.camera.zoom,
     );
+  }
+
+  bool _isValidCircle(MapCircle circle) {
+    // Validate latitude and longitude
+    if (circle.center.latitude < -90 || circle.center.latitude > 90) {
+      return false;
+    }
+    if (circle.center.longitude < -180 || circle.center.longitude > 180) {
+      return false;
+    }
+
+    // Validate radius (must be positive and reasonable)
+    if (circle.radius <= 0 || circle.radius > 50000) {
+      return false;
+    }
+
+    return true;
+  }
+
+  double _clampRadius(double radius) {
+    // Clamp radius to reasonable bounds (1 meter to 50km)
+    return radius.clamp(1.0, 50000.0);
   }
 }
 

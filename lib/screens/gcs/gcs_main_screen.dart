@@ -5,7 +5,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/utils/app_theme.dart';
 import '../../providers/group_management_provider.dart';
 import 'gcs_map_screen.dart';
-import 'ongoing_missions_screen.dart';
+import 'enhanced_ongoing_missions_screen.dart';
 import 'create_group_screen.dart';
 import 'create_mission_screen.dart';
 
@@ -23,7 +23,7 @@ class _GCSMainScreenState extends State<GCSMainScreen>
 
   final List<Widget> _screens = [
     const GCSMapScreen(),
-    const OngoingMissionsScreen(),
+    const EnhancedOngoingMissionsScreen(),
     const CreateGroupScreen(),
     const CreateMissionScreen(),
   ];
@@ -259,6 +259,7 @@ class _GCSMainScreenState extends State<GCSMainScreen>
     switch (_currentIndex) {
       case 0: // Map
         return FloatingActionButton(
+          heroTag: "gcs_map_fab",
           onPressed: () => _showQuickActions(context),
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
@@ -267,6 +268,7 @@ class _GCSMainScreenState extends State<GCSMainScreen>
         );
       case 1: // Ongoing Missions
         return FloatingActionButton(
+          heroTag: "gcs_missions_fab",
           onPressed: () => _onTabTapped(3), // Navigate to Create Mission
           backgroundColor: AppColors.secondary,
           foregroundColor: Colors.white,

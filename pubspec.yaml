@@ -32,6 +32,8 @@ dependencies:
   http: ^1.2.2
   dio: ^5.9.0
 
+  # Location Services
+
   # Local Storage
   shared_preferences: ^2.5.3
   hive: ^2.2.3

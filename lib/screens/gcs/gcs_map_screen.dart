@@ -7,6 +7,8 @@ import '../../core/widgets/map_widget.dart' as map_widget;
 import '../../providers/group_management_provider.dart';
 import '../../models/group_event.dart';
 import '../../models/gcs_station.dart';
+import '../../services/location_service.dart';
+import '../../models/user.dart';
 
 class GCSMapScreen extends StatefulWidget {
   const GCSMapScreen({super.key});
@@ -29,15 +31,52 @@ class _GCSMapScreenState extends State<GCSMapScreen>
   static const double _defaultLongitude = 78.9629;
   static const double _defaultZoom = 5.0;
 
+  // Location service
+  final LocationService _locationService = LocationService();
+  LocationData? _currentLocation;
+  bool _locationLoading = false;
+
   @override
   bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    _getCurrentLocation();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updateMapMarkers();
     });
+  }
+
+  Future<void> _getCurrentLocation() async {
+    if (_locationLoading) return;
+
+    setState(() {
+      _locationLoading = true;
+    });
+
+    try {
+      final location = await _locationService.getCurrentLocation();
+      if (location != null && mounted) {
+        setState(() {
+          _currentLocation = location;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error getting current location: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _locationLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _locationService.dispose();
+    super.dispose();
   }
 
   @override
@@ -53,12 +92,13 @@ class _GCSMapScreenState extends State<GCSMapScreen>
                 child: Stack(
                   children: [
                     map_widget.MapWidget(
-                      latitude: _defaultLatitude,
-                      longitude: _defaultLongitude,
-                      zoom: _defaultZoom,
+                      latitude: _currentLocation?.latitude ?? _defaultLatitude,
+                      longitude:
+                          _currentLocation?.longitude ?? _defaultLongitude,
+                      zoom: _currentLocation != null ? 12.0 : _defaultZoom,
                       markers: _markers,
                       circles: _circles,
-                      showCurrentLocation: true,
+                      showCurrentLocation: _currentLocation != null,
                       showZoomControls: true,
                       showLocationButton: true,
                       onMapCreated: () {
@@ -85,7 +125,7 @@ class _GCSMapScreenState extends State<GCSMapScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).scaffoldBackgroundColor,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
@@ -183,8 +223,16 @@ class _GCSMapScreenState extends State<GCSMapScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.grey[200],
+          color: isSelected
+              ? AppColors.primary
+              : Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey[700]
+              : Colors.grey[200],
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.border,
+            width: 1,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -200,7 +248,10 @@ class _GCSMapScreenState extends State<GCSMapScreen>
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textSecondary,
+                color: isSelected
+                    ? Colors.white
+                    : Theme.of(context).textTheme.bodyMedium?.color ??
+                          AppColors.textPrimary,
                 fontWeight: FontWeight.w500,
                 fontSize: 12,
               ),
@@ -219,32 +270,56 @@ class _GCSMapScreenState extends State<GCSMapScreen>
     required void Function(T?) onChanged,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
+        color: Theme.of(context).cardColor,
+        border: Border.all(color: AppColors.border),
         borderRadius: BorderRadius.circular(8),
       ),
       child: DropdownButton<T>(
         value: value,
-        hint: Text(label, style: const TextStyle(fontSize: 12)),
+        hint: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+          ),
+        ),
         underline: const SizedBox(),
+        dropdownColor: Theme.of(context).cardColor,
         items: [
           DropdownMenuItem<T>(
             value: null,
-            child: Text('All ${label}s', style: const TextStyle(fontSize: 12)),
+            child: Text(
+              'All ${label}s',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).textTheme.bodyMedium?.color,
+              ),
+            ),
           ),
           ...items.map(
             (item) => DropdownMenuItem<T>(
               value: item,
               child: Text(
                 itemBuilder(item),
-                style: const TextStyle(fontSize: 12),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).textTheme.bodyMedium?.color,
+                ),
               ),
             ),
           ),
         ],
         onChanged: onChanged,
-        style: const TextStyle(fontSize: 12),
+        style: TextStyle(
+          fontSize: 12,
+          color: Theme.of(context).textTheme.bodyMedium?.color,
+        ),
+        icon: Icon(
+          Icons.arrow_drop_down,
+          color: Theme.of(context).iconTheme.color,
+        ),
       ),
     );
   }
@@ -256,10 +331,22 @@ class _GCSMapScreenState extends State<GCSMapScreen>
       child: Column(
         children: [
           FloatingActionButton.small(
-            onPressed: _centerOnIndia,
-            backgroundColor: Colors.white,
-            foregroundColor: AppColors.primary,
-            child: const Icon(Icons.my_location),
+            heroTag: "gcs_map_location_fab",
+            onPressed: _locationLoading ? null : _centerOnIndia,
+            backgroundColor: Theme.of(context).cardColor,
+            foregroundColor: _currentLocation != null
+                ? AppColors.primary
+                : Colors.grey,
+            child: _locationLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.primary,
+                    ),
+                  )
+                : const Icon(Icons.my_location),
           ),
         ],
       ),
@@ -273,8 +360,9 @@ class _GCSMapScreenState extends State<GCSMapScreen>
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
+          color: Theme.of(context).cardColor.withOpacity(0.95),
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border.withOpacity(0.3)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.1),
@@ -449,10 +537,16 @@ class _GCSMapScreenState extends State<GCSMapScreen>
         );
 
         // Add affected area circle
+        // Validate and clamp radius before creating circle
+        double radiusInMeters = (event.affectedRadius * 1000).clamp(
+          1.0,
+          50000.0,
+        );
+
         circles.add(
           map_widget.MapCircle(
             center: LatLng(event.location.latitude, event.location.longitude),
-            radius: event.affectedRadius * 1000, // Convert km to meters
+            radius: radiusInMeters, // Convert km to meters with validation
             color: color.withValues(alpha: 0.1),
             borderColor: color.withValues(alpha: 0.5),
             borderWidth: 2,
@@ -559,11 +653,22 @@ class _GCSMapScreenState extends State<GCSMapScreen>
     }
   }
 
-  void _centerOnIndia() {
-    // Center map on India using Flutter Map
-    setState(() {
-      // This would trigger a map center update in a real implementation
-    });
+  void _centerOnIndia() async {
+    if (_currentLocation != null) {
+      // If we have current location, center on it
+      setState(() {
+        // This would trigger a map center update to current location
+      });
+    } else {
+      // Try to get current location first
+      await _getCurrentLocation();
+      if (_currentLocation == null) {
+        // Fallback to centering on India
+        setState(() {
+          // Center map on India using default coordinates
+        });
+      }
+    }
   }
 
   void _showLocationInfo(LatLng position) {

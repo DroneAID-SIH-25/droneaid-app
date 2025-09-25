@@ -115,6 +115,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: "my_requests_fab",
         onPressed: () => AppRouter.goToRequestHelp(),
         icon: const Icon(Icons.emergency),
         label: const Text('New Request'),
