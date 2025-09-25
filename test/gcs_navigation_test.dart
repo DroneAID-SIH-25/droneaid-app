@@ -6,6 +6,7 @@ import 'package:drone_aid/screens/gcs/gcs_main_screen.dart';
 import 'package:drone_aid/providers/group_management_provider.dart';
 import 'package:drone_aid/models/group_event.dart';
 import 'package:drone_aid/models/gcs_station.dart';
+import 'package:drone_aid/models/user.dart';
 
 void main() {
   group('GCS Navigation System Tests', () {
@@ -147,7 +148,7 @@ void main() {
         type: EventType.flood,
         severity: EventSeverity.moderate,
         priority: EventPriority.medium,
-        location: const LocationData(
+        location: LocationData(
           latitude: 19.0760,
           longitude: 72.8777,
           address: 'Test Location',
@@ -215,7 +216,7 @@ void main() {
         name: 'Test Station',
         code: 'TEST-001',
         location: 'Test Location',
-        coordinates: const LocationData(
+        coordinates: LocationData(
           latitude: 19.0760,
           longitude: 72.8777,
           address: 'Test Address',
@@ -241,7 +242,7 @@ void main() {
         type: EventType.flood,
         severity: EventSeverity.moderate,
         priority: EventPriority.medium,
-        location: const LocationData(
+        location: LocationData(
           latitude: 19.0760,
           longitude: 72.8777,
           address: 'Test Location',

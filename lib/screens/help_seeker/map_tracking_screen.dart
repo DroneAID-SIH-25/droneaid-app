@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/drone_tracking_provider.dart';
 import '../../providers/emergency_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../models/drone.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/map_widget.dart' as map_widget;
 import '../../routes/app_router.dart';
 
 class MapTrackingScreen extends StatefulWidget {
@@ -19,10 +20,9 @@ class MapTrackingScreen extends StatefulWidget {
 
 class _MapTrackingScreenState extends State<MapTrackingScreen>
     with TickerProviderStateMixin {
-  GoogleMapController? _mapController;
-  Set<Marker> _markers = {};
-  Set<Circle> _circles = {};
-  Set<Polyline> _polylines = {};
+  List<map_widget.MapMarker> _markers = [];
+  List<map_widget.MapCircle> _circles = [];
+  List<map_widget.MapPolyline> _polylines = [];
   bool _isMapReady = false;
 
   // Animation controllers
@@ -35,12 +35,6 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
   bool _showDroneDetails = true;
   bool _showGeofence = true;
   String? _selectedDroneId;
-
-  // Camera positions for different areas in India
-  static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(28.6139, 77.2090), // New Delhi
-    zoom: 12,
-  );
 
   @override
   void initState() {
@@ -88,7 +82,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
   void dispose() {
     _pulseController.dispose();
     _fabController.dispose();
-    _mapController?.dispose();
+    // No map controller to dispose in Flutter Map
     super.dispose();
   }
 
@@ -107,8 +101,8 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                 ) {
                   return Stack(
                     children: [
-                      // Google Map
-                      _buildGoogleMap(locationProvider, droneProvider),
+                      // Flutter Map
+                      _buildFlutterMap(locationProvider, droneProvider),
 
                       // Top overlay with status info
                       _buildTopOverlay(locationProvider, droneProvider),
@@ -134,21 +128,31 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     );
   }
 
-  Widget _buildGoogleMap(
+  Widget _buildFlutterMap(
     LocationProvider locationProvider,
     DroneTrackingProvider droneProvider,
   ) {
-    return GoogleMap(
-      onMapCreated: _onMapCreated,
-      initialCameraPosition: _initialPosition,
+    final currentLocation = locationProvider.currentLocation;
+    if (currentLocation == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return map_widget.MapWidget(
+      latitude: currentLocation.latitude,
+      longitude: currentLocation.longitude,
+      zoom: 14.0,
       markers: _markers,
       circles: _circles,
       polylines: _polylines,
-      myLocationEnabled: true,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: true,
+      showCurrentLocation: true,
+      showZoomControls: true,
+      showLocationButton: true,
+      onMapCreated: () {
+        setState(() {
+          _isMapReady = true;
+        });
+        _updateMapElements();
+      },
       onTap: (position) {
         setState(() {
           _selectedDroneId = null;
@@ -311,7 +315,11 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.flight_takeoff_outlined, size: 48, color: Colors.grey[400]),
+              Icon(
+                Icons.flight_takeoff_outlined,
+                size: 48,
+                color: Colors.grey[400],
+              ),
               const SizedBox(height: 8),
               const Text(
                 'No Drones in Range',
@@ -422,7 +430,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                   height: 12,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: _getDroneStatusColor(drone.status),
+                    color: _getStatusColor(drone.status),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -586,44 +594,43 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     );
   }
 
-  void _onMapCreated(GoogleMapController controller) {
-    _mapController = controller;
-    _isMapReady = true;
-    _updateMapElements();
-  }
-
   void _updateMapElements() {
     if (!_isMapReady) return;
 
     final locationProvider = context.read<LocationProvider>();
     final droneProvider = context.read<DroneTrackingProvider>();
 
-    final markers = <Marker>{};
-    final circles = <Circle>{};
-    final polylines = <Polyline>{};
+    final markers = <map_widget.MapMarker>[];
+    final circles = <map_widget.MapCircle>[];
+    final polylines = <map_widget.MapPolyline>[];
 
     // User location marker
     final userLocation = locationProvider.currentLocation;
     if (userLocation != null) {
       markers.add(
-        Marker(
-          markerId: const MarkerId('user_location'),
+        map_widget.MapMarker(
           position: LatLng(userLocation.latitude, userLocation.longitude),
-          infoWindow: const InfoWindow(title: 'Your Location'),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: const Icon(Icons.person, color: Colors.white, size: 16),
+          ),
         ),
       );
 
       // Geofence circle
       if (_showGeofence) {
         circles.add(
-          Circle(
-            circleId: const CircleId('geofence'),
+          map_widget.MapCircle(
             center: LatLng(userLocation.latitude, userLocation.longitude),
             radius: droneProvider.geofenceRadius,
-            strokeColor: AppColors.primary.withOpacity(0.5),
-            strokeWidth: 2,
-            fillColor: AppColors.primary.withOpacity(0.1),
+            color: AppColors.primary.withValues(alpha: 0.1),
+            borderColor: AppColors.primary.withValues(alpha: 0.5),
+            borderWidth: 2,
           ),
         );
       }
@@ -634,39 +641,34 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
       final isInGeofence = droneProvider.dronesInGeofence.contains(drone);
       final isSelected = _selectedDroneId == drone.id;
 
+      final droneStatusForMap = _convertDroneStatus(drone.status);
       markers.add(
-        Marker(
-          markerId: MarkerId(drone.id),
+        map_widget.MapMarker(
           position: LatLng(drone.location.latitude, drone.location.longitude),
-          infoWindow: InfoWindow(
-            title: drone.name,
-            snippet: '${drone.serialNumber} • ${_getStatusText(drone.status)}',
+          child: GestureDetector(
+            onTap: () => _selectDrone(drone),
+            child: map_widget.EmergencyMarkers.drone(
+              position: LatLng(
+                drone.location.latitude,
+                drone.location.longitude,
+              ),
+              status: droneStatusForMap,
+              onTap: () => _selectDrone(drone),
+            ).child,
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            isInGeofence
-                ? (isSelected
-                      ? BitmapDescriptor.hueOrange
-                      : BitmapDescriptor.hueGreen)
-                : BitmapDescriptor.hueRed,
-          ),
-          onTap: () => _selectDrone(drone),
         ),
       );
 
       // Route line to user location (for drones in geofence)
       if (isInGeofence && userLocation != null) {
         polylines.add(
-          Polyline(
-            polylineId: PolylineId('route_${drone.id}'),
+          map_widget.MapPolyline(
             points: [
               LatLng(drone.location.latitude, drone.location.longitude),
               LatLng(userLocation.latitude, userLocation.longitude),
             ],
-            color: isSelected
-                ? AppColors.primary
-                : AppColors.primary.withOpacity(0.3),
-            width: isSelected ? 3 : 2,
-            patterns: [PatternItem.dash(10), PatternItem.gap(5)],
+            color: isSelected ? AppColors.secondary : AppColors.primary,
+            width: isSelected ? 4.0 : 2.0,
           ),
         );
       }
@@ -684,14 +686,21 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
       _selectedDroneId = _selectedDroneId == drone.id ? null : drone.id;
     });
     _updateMapElements();
+  }
 
-    // Center map on selected drone
-    if (_selectedDroneId == drone.id) {
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLng(
-          LatLng(drone.location.latitude, drone.location.longitude),
-        ),
-      );
+  // Convert drone model DroneStatus to map widget DroneStatus
+  map_widget.DroneStatus _convertDroneStatus(DroneStatus status) {
+    switch (status) {
+      case DroneStatus.active:
+        return map_widget.DroneStatus.active;
+      case DroneStatus.deployed:
+        return map_widget.DroneStatus.deployed;
+      case DroneStatus.maintenance:
+        return map_widget.DroneStatus.maintenance;
+      case DroneStatus.offline:
+        return map_widget.DroneStatus.offline;
+      default:
+        return map_widget.DroneStatus.active;
     }
   }
 
@@ -700,12 +709,10 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     final userLocation = locationProvider.currentLocation;
 
     if (userLocation != null) {
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(userLocation.latitude, userLocation.longitude),
-          15,
-        ),
-      );
+      // Map will automatically show current location
+      setState(() {
+        _updateMapElements();
+      });
     } else {
       ScaffoldMessenger.of(
         context,
@@ -878,7 +885,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     );
   }
 
-  Color _getDroneStatusColor(DroneStatus status) {
+  Color _getStatusColor(DroneStatus status) {
     switch (status) {
       case DroneStatus.active:
         return AppColors.success;

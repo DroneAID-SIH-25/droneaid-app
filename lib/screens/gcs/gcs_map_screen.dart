@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/utils/app_theme.dart';
+
+import '../../core/widgets/map_widget.dart' as map_widget;
 import '../../providers/group_management_provider.dart';
 import '../../models/group_event.dart';
 import '../../models/gcs_station.dart';
@@ -16,19 +17,17 @@ class GCSMapScreen extends StatefulWidget {
 
 class _GCSMapScreenState extends State<GCSMapScreen>
     with AutomaticKeepAliveClientMixin {
-  late GoogleMapController _mapController;
-  Set<Marker> _markers = {};
-  Set<Circle> _circles = {};
+  List<map_widget.MapMarker> _markers = [];
+  List<map_widget.MapCircle> _circles = [];
   bool _showEvents = true;
   bool _showStations = true;
   EventType? _eventTypeFilter;
   StationStatus? _stationStatusFilter;
 
   // Default center on India
-  static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(20.5937, 78.9629), // Center of India
-    zoom: 5.0,
-  );
+  static const double _defaultLatitude = 20.5937; // Center of India
+  static const double _defaultLongitude = 78.9629;
+  static const double _defaultZoom = 5.0;
 
   @override
   bool get wantKeepAlive => true;
@@ -53,19 +52,18 @@ class _GCSMapScreenState extends State<GCSMapScreen>
               Expanded(
                 child: Stack(
                   children: [
-                    GoogleMap(
-                      initialCameraPosition: _initialPosition,
-                      onMapCreated: (GoogleMapController controller) {
-                        _mapController = controller;
-                        _updateMapMarkers();
-                      },
+                    map_widget.MapWidget(
+                      latitude: _defaultLatitude,
+                      longitude: _defaultLongitude,
+                      zoom: _defaultZoom,
                       markers: _markers,
                       circles: _circles,
-                      zoomControlsEnabled: false,
-                      mapToolbarEnabled: false,
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: false,
-                      compassEnabled: true,
+                      showCurrentLocation: true,
+                      showZoomControls: true,
+                      showLocationButton: true,
+                      onMapCreated: () {
+                        _updateMapMarkers();
+                      },
                       onTap: (LatLng position) {
                         _showLocationInfo(position);
                       },
@@ -258,22 +256,6 @@ class _GCSMapScreenState extends State<GCSMapScreen>
       child: Column(
         children: [
           FloatingActionButton.small(
-            onPressed: () =>
-                _mapController.animateCamera(CameraUpdate.zoomIn()),
-            backgroundColor: Colors.white,
-            foregroundColor: AppColors.primary,
-            child: const Icon(Icons.add),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton.small(
-            onPressed: () =>
-                _mapController.animateCamera(CameraUpdate.zoomOut()),
-            backgroundColor: Colors.white,
-            foregroundColor: AppColors.primary,
-            child: const Icon(Icons.remove),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton.small(
             onPressed: _centerOnIndia,
             backgroundColor: Colors.white,
             foregroundColor: AppColors.primary,
@@ -423,8 +405,8 @@ class _GCSMapScreenState extends State<GCSMapScreen>
 
   void _updateMapMarkers() {
     final provider = context.read<GroupManagementProvider>();
-    final Set<Marker> markers = {};
-    final Set<Circle> circles = {};
+    final List<map_widget.MapMarker> markers = [];
+    final List<map_widget.MapCircle> circles = [];
 
     // Add event markers
     if (_showEvents) {
@@ -436,29 +418,44 @@ class _GCSMapScreenState extends State<GCSMapScreen>
       }
 
       for (final event in events) {
+        final color = _getEventColor(event);
         markers.add(
-          Marker(
-            markerId: MarkerId('event_${event.id}'),
+          map_widget.MapMarker(
             position: LatLng(event.location.latitude, event.location.longitude),
-            icon: _getEventMarkerIcon(event),
-            infoWindow: InfoWindow(
-              title: event.title,
-              snippet: '${event.typeDisplay} • ${event.statusDisplay}',
+            child: GestureDetector(
               onTap: () => _showEventDetails(event),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  _getEventIcon(event),
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
             ),
-            onTap: () => _showEventDetails(event),
           ),
         );
 
         // Add affected area circle
         circles.add(
-          Circle(
-            circleId: CircleId('area_${event.id}'),
+          map_widget.MapCircle(
             center: LatLng(event.location.latitude, event.location.longitude),
             radius: event.affectedRadius * 1000, // Convert km to meters
-            strokeColor: _getEventColor(event).withOpacity(0.5),
-            strokeWidth: 2,
-            fillColor: _getEventColor(event).withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
+            borderColor: color.withValues(alpha: 0.5),
+            borderWidth: 2,
           ),
         );
       }
@@ -475,20 +472,21 @@ class _GCSMapScreenState extends State<GCSMapScreen>
 
       for (final station in stations) {
         markers.add(
-          Marker(
-            markerId: MarkerId('station_${station.id}'),
+          map_widget.MapMarker(
             position: LatLng(
               station.coordinates.latitude,
               station.coordinates.longitude,
             ),
-            icon: _getStationMarkerIcon(station),
-            infoWindow: InfoWindow(
-              title: station.name,
-              snippet:
-                  '${station.statusDisplay} • ${station.currentOperators}/${station.maxCapacity}',
+            child: GestureDetector(
               onTap: () => _showStationDetails(station),
+              child: map_widget.EmergencyMarkers.gcsStation(
+                position: LatLng(
+                  station.coordinates.latitude,
+                  station.coordinates.longitude,
+                ),
+                onTap: () => _showStationDetails(station),
+              ).child,
             ),
-            onTap: () => _showStationDetails(station),
           ),
         );
       }
@@ -500,43 +498,36 @@ class _GCSMapScreenState extends State<GCSMapScreen>
     });
   }
 
-  BitmapDescriptor _getEventMarkerIcon(GroupEvent event) {
-    // In a real implementation, you would use custom marker icons
-    switch (event.severity) {
-      case EventSeverity.critical:
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
-      case EventSeverity.major:
-        return BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueOrange,
-        );
-      case EventSeverity.moderate:
-        return BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueYellow,
-        );
-      case EventSeverity.minor:
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
-    }
-  }
-
-  BitmapDescriptor _getStationMarkerIcon(GCSStation station) {
-    // In a real implementation, you would use custom marker icons
-    switch (station.status) {
-      case StationStatus.operational:
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
-      case StationStatus.maintenance:
-        return BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueOrange,
-        );
-      case StationStatus.offline:
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
-      case StationStatus.emergency:
-        return BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueMagenta,
-        );
-      case StationStatus.standby:
-        return BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueYellow,
-        );
+  IconData _getEventIcon(GroupEvent event) {
+    switch (event.type) {
+      case EventType.flood:
+        return Icons.water;
+      case EventType.fireIncident:
+        return Icons.local_fire_department;
+      case EventType.earthquake:
+        return Icons.warning;
+      case EventType.tornado:
+        return Icons.tornado;
+      case EventType.landslide:
+        return Icons.terrain;
+      case EventType.industrialAccident:
+        return Icons.car_crash;
+      case EventType.naturalDisaster:
+        return Icons.emergency;
+      case EventType.hurricane:
+        return Icons.cyclone;
+      case EventType.tsunami:
+        return Icons.waves;
+      case EventType.volcanicEruption:
+        return Icons.volcano;
+      case EventType.chemicalSpill:
+        return Icons.science;
+      case EventType.buildingCollapse:
+        return Icons.business;
+      case EventType.other:
+        return Icons.emergency;
+      default:
+        return Icons.emergency;
     }
   }
 
@@ -553,10 +544,26 @@ class _GCSMapScreenState extends State<GCSMapScreen>
     }
   }
 
+  Color _getStationColor(GCSStation station) {
+    switch (station.status) {
+      case StationStatus.operational:
+        return AppColors.success;
+      case StationStatus.maintenance:
+        return AppColors.warning;
+      case StationStatus.offline:
+        return AppColors.error;
+      case StationStatus.emergency:
+        return Colors.purple;
+      case StationStatus.standby:
+        return AppColors.info;
+    }
+  }
+
   void _centerOnIndia() {
-    _mapController.animateCamera(
-      CameraUpdate.newCameraPosition(_initialPosition),
-    );
+    // Center map on India using Flutter Map
+    setState(() {
+      // This would trigger a map center update in a real implementation
+    });
   }
 
   void _showLocationInfo(LatLng position) {

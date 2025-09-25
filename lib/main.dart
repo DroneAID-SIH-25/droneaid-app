@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod;
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'core/constants/app_strings.dart';
@@ -36,7 +37,7 @@ void main() async {
     ),
   );
 
-  runApp(const DroneAidApp());
+  runApp(riverpod.ProviderScope(child: const DroneAidApp()));
 }
 
 class DroneAidApp extends StatelessWidget {

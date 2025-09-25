@@ -1,125 +1,161 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
-import 'package:flutter/foundation.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
-import 'package:flutter_map/flutter_map.dart' as fmap;
-import 'package:latlong2/latlong.dart' as latLng;
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../constants/app_colors.dart';
 
-/// Map widget that supports both Google Maps and OpenStreetMap
+/// Emergency Response Map Widget using Flutter Map
 class MapWidget extends StatefulWidget {
   final double latitude;
   final double longitude;
   final double zoom;
-  final Set<gmaps.Marker>? markers;
-  final Set<gmaps.Polyline>? polylines;
-  final gmaps.MapType mapType;
-  final VoidCallback? onMapCreated;
-  final Function(gmaps.LatLng)? onTap;
+  final List<MapMarker>? markers;
+  final List<MapPolyline>? polylines;
+  final List<MapCircle>? circles;
   final bool showCurrentLocation;
-  final bool enableInteraction;
+  final bool showZoomControls;
+  final bool showLocationButton;
+  final Function()? onMapCreated;
+  final Function(LatLng)? onTap;
+  final Function(LatLng)? onLongPress;
+  final MapType mapType;
 
   const MapWidget({
-    Key? key,
-    this.latitude = 28.6139, // Default to Delhi, India
-    this.longitude = 77.2090,
-    this.zoom = 12.0,
+    super.key,
+    required this.latitude,
+    required this.longitude,
+    this.zoom = 14.0,
     this.markers,
     this.polylines,
-    this.mapType = gmaps.MapType.normal,
+    this.circles,
+    this.showCurrentLocation = true,
+    this.showZoomControls = true,
+    this.showLocationButton = true,
     this.onMapCreated,
     this.onTap,
-    this.showCurrentLocation = true,
-    this.enableInteraction = true,
-  }) : super(key: key);
+    this.onLongPress,
+    this.mapType = MapType.street,
+  });
 
   @override
   State<MapWidget> createState() => _MapWidgetState();
 }
 
 class _MapWidgetState extends State<MapWidget> {
-  gmaps.GoogleMapController? _googleMapController;
-  fmap.MapController? _openMapController;
-  bool _useGoogleMaps = true; // Toggle between map providers
+  late MapController _mapController;
+  MapType _currentMapType = MapType.street;
 
   @override
   void initState() {
     super.initState();
-    _openMapController = fmap.MapController();
-  }
-
-  @override
-  void dispose() {
-    _googleMapController?.dispose();
-    super.dispose();
+    _mapController = MapController();
+    _currentMapType = widget.mapType;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Stack(
-          children: [
-            _useGoogleMaps ? _buildGoogleMap() : _buildOpenStreetMap(),
-            _buildMapControls(),
-          ],
-        ),
-      ),
+    return Stack(
+      children: [
+        _buildFlutterMap(),
+        if (widget.showZoomControls || widget.showLocationButton)
+          _buildMapControls(),
+      ],
     );
   }
 
-  Widget _buildGoogleMap() {
-    return gmaps.GoogleMap(
-      initialCameraPosition: gmaps.CameraPosition(
-        target: gmaps.LatLng(widget.latitude, widget.longitude),
-        zoom: widget.zoom,
-      ),
-      markers: widget.markers ?? <gmaps.Marker>{},
-      polylines: widget.polylines ?? <gmaps.Polyline>{},
-      mapType: widget.mapType,
-      myLocationEnabled: widget.showCurrentLocation,
-      myLocationButtonEnabled: false, // We'll use custom button
-      onMapCreated: (gmaps.GoogleMapController controller) {
-        _googleMapController = controller;
-        widget.onMapCreated?.call();
-      },
-      onTap: widget.onTap,
-      gestureRecognizers: widget.enableInteraction
-          ? <Factory<OneSequenceGestureRecognizer>>{}
-          : <Factory<OneSequenceGestureRecognizer>>{
-              Factory<OneSequenceGestureRecognizer>(
-                () => EagerGestureRecognizer(),
-              ),
-            },
-    );
-  }
-
-  Widget _buildOpenStreetMap() {
-    return fmap.FlutterMap(
-      mapController: _openMapController,
-      options: fmap.MapOptions(
-        initialCenter: latLng.LatLng(widget.latitude, widget.longitude),
+  Widget _buildFlutterMap() {
+    return FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        initialCenter: LatLng(widget.latitude, widget.longitude),
         initialZoom: widget.zoom,
+        minZoom: 3.0,
+        maxZoom: 18.0,
+        onMapReady: widget.onMapCreated,
         onTap: widget.onTap != null
-            ? (tapPosition, point) =>
-                  widget.onTap!(gmaps.LatLng(point.latitude, point.longitude))
+            ? (tapPosition, point) => widget.onTap!(point)
+            : null,
+        onLongPress: widget.onLongPress != null
+            ? (tapPosition, point) => widget.onLongPress!(point)
             : null,
       ),
       children: [
-        fmap.TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.droneaid.app',
+        // Tile Layer
+        TileLayer(
+          urlTemplate: _getTileUrlTemplate(),
+          userAgentPackageName: 'com.droneaid.emergency',
+          maxNativeZoom: 19,
         ),
-        if (widget.markers != null && widget.markers!.isNotEmpty)
-          fmap.MarkerLayer(markers: _convertGoogleMarkersToFlutterMarkers()),
+
+        // Circles Layer
+        if (widget.circles != null && widget.circles!.isNotEmpty)
+          CircleLayer(
+            circles: widget.circles!
+                .map(
+                  (circle) => CircleMarker(
+                    point: circle.center,
+                    radius: circle.radius,
+                    color: circle.color,
+                    borderColor: circle.borderColor,
+                    borderStrokeWidth: circle.borderWidth,
+                  ),
+                )
+                .toList(),
+          ),
+
+        // Polylines Layer
         if (widget.polylines != null && widget.polylines!.isNotEmpty)
-          fmap.PolylineLayer(
-            polylines: _convertGooglePolylinesToFlutterPolylines(),
+          PolylineLayer(
+            polylines: widget.polylines!
+                .map(
+                  (polyline) => Polyline(
+                    points: polyline.points,
+                    color: polyline.color,
+                    strokeWidth: polyline.width,
+                  ),
+                )
+                .toList(),
+          ),
+
+        // Markers Layer
+        if (widget.markers != null && widget.markers!.isNotEmpty)
+          MarkerLayer(
+            markers: widget.markers!
+                .map(
+                  (marker) => Marker(
+                    point: marker.position,
+                    width: marker.width,
+                    height: marker.height,
+                    child: marker.child,
+                    alignment: marker.alignment,
+                  ),
+                )
+                .toList(),
+          ),
+
+        // Current Location Layer
+        if (widget.showCurrentLocation)
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: LatLng(widget.latitude, widget.longitude),
+                width: 20.0,
+                height: 20.0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 10,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
       ],
     );
@@ -131,194 +167,338 @@ class _MapWidgetState extends State<MapWidget> {
       right: 16,
       child: Column(
         children: [
-          // Map provider toggle button
+          // Map Type Toggle
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
               ],
             ),
             child: IconButton(
-              icon: Icon(
-                _useGoogleMaps ? Icons.map : Icons.satellite,
-                color: AppColors.primary,
-              ),
-              onPressed: () {
-                setState(() {
-                  _useGoogleMaps = !_useGoogleMaps;
-                });
-              },
-              tooltip: _useGoogleMaps
-                  ? 'Switch to OpenStreetMap'
-                  : 'Switch to Google Maps',
+              onPressed: _toggleMapType,
+              icon: Icon(_getMapTypeIcon(), color: AppColors.primary),
+              tooltip: 'Switch Map Type',
             ),
           ),
-          const SizedBox(height: 8),
 
-          // Zoom controls
-          if (widget.enableInteraction) ...[
+          if (widget.showZoomControls) ...[
+            const SizedBox(height: 8),
+            // Zoom Controls
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.add, color: AppColors.primary),
                     onPressed: _zoomIn,
+                    icon: const Icon(Icons.add),
                     tooltip: 'Zoom In',
                   ),
-                  const Divider(height: 1, color: AppColors.border),
+                  const Divider(height: 1),
                   IconButton(
-                    icon: const Icon(Icons.remove, color: AppColors.primary),
                     onPressed: _zoomOut,
+                    icon: const Icon(Icons.remove),
                     tooltip: 'Zoom Out',
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
           ],
 
-          // Current location button
-          if (widget.showCurrentLocation)
+          if (widget.showLocationButton) ...[
+            const SizedBox(height: 8),
+            // Current Location Button
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
               child: IconButton(
-                icon: const Icon(Icons.my_location, color: AppColors.primary),
                 onPressed: _goToCurrentLocation,
-                tooltip: 'Go to Current Location',
+                icon: const Icon(Icons.my_location),
+                color: AppColors.primary,
+                tooltip: 'My Location',
               ),
             ),
+          ],
         ],
       ),
     );
   }
 
-  void _zoomIn() {
-    if (_useGoogleMaps) {
-      _googleMapController?.animateCamera(gmaps.CameraUpdate.zoomIn());
-    } else {
-      // For FlutterMap, we'll use a simple zoom approach
-      // Note: FlutterMap v6+ has different API
+  String _getTileUrlTemplate() {
+    switch (_currentMapType) {
+      case MapType.satellite:
+        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      case MapType.terrain:
+        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}';
+      case MapType.street:
+        return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
     }
+  }
+
+  IconData _getMapTypeIcon() {
+    switch (_currentMapType) {
+      case MapType.satellite:
+        return Icons.satellite_alt;
+      case MapType.terrain:
+        return Icons.terrain;
+      case MapType.street:
+        return Icons.map;
+    }
+  }
+
+  void _toggleMapType() {
+    setState(() {
+      switch (_currentMapType) {
+        case MapType.street:
+          _currentMapType = MapType.satellite;
+          break;
+        case MapType.satellite:
+          _currentMapType = MapType.terrain;
+          break;
+        case MapType.terrain:
+          _currentMapType = MapType.street;
+          break;
+      }
+    });
+  }
+
+  void _zoomIn() {
+    _mapController.move(
+      _mapController.camera.center,
+      _mapController.camera.zoom + 1,
+    );
   }
 
   void _zoomOut() {
-    if (_useGoogleMaps) {
-      _googleMapController?.animateCamera(gmaps.CameraUpdate.zoomOut());
-    } else {
-      // For FlutterMap, we'll use a simple zoom approach
-      // Note: FlutterMap v6+ has different API
-    }
+    _mapController.move(
+      _mapController.camera.center,
+      _mapController.camera.zoom - 1,
+    );
   }
 
   void _goToCurrentLocation() {
-    // This would typically involve getting current location from location service
-    // For now, we'll center on Delhi, India
-    const target = gmaps.LatLng(28.6139, 77.2090);
-
-    if (_useGoogleMaps) {
-      _googleMapController?.animateCamera(gmaps.CameraUpdate.newLatLng(target));
-    } else {
-      // For FlutterMap, we'll use a simple move approach
-      // Note: FlutterMap v6+ has different API
-    }
-  }
-
-  List<fmap.Marker> _convertGoogleMarkersToFlutterMarkers() {
-    if (widget.markers == null) return [];
-
-    return widget.markers!.map((googleMarker) {
-      return fmap.Marker(
-        width: 40,
-        height: 40,
-        point: latLng.LatLng(
-          googleMarker.position.latitude,
-          googleMarker.position.longitude,
-        ),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.primary,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.location_pin, color: Colors.white, size: 24),
-        ),
-      );
-    }).toList();
-  }
-
-  List<fmap.Polyline> _convertGooglePolylinesToFlutterPolylines() {
-    if (widget.polylines == null) return [];
-
-    return widget.polylines!.map((googlePolyline) {
-      return fmap.Polyline(
-        points: googlePolyline.points
-            .map((point) => latLng.LatLng(point.latitude, point.longitude))
-            .toList(),
-        color: googlePolyline.color,
-        strokeWidth: googlePolyline.width.toDouble(),
-      );
-    }).toList();
-  }
-}
-
-/// Simplified map widget for basic use cases
-class SimpleMapWidget extends StatelessWidget {
-  final double latitude;
-  final double longitude;
-  final String? title;
-  final String? description;
-
-  const SimpleMapWidget({
-    Key? key,
-    required this.latitude,
-    required this.longitude,
-    this.title,
-    this.description,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return MapWidget(
-      latitude: latitude,
-      longitude: longitude,
-      markers: {
-        gmaps.Marker(
-          markerId: const gmaps.MarkerId('location'),
-          position: gmaps.LatLng(latitude, longitude),
-          infoWindow: gmaps.InfoWindow(
-            title: title ?? 'Location',
-            snippet: description,
-          ),
-        ),
-      },
-      enableInteraction: false,
-      showCurrentLocation: false,
+    _mapController.move(
+      LatLng(widget.latitude, widget.longitude),
+      _mapController.camera.zoom,
     );
   }
 }
+
+/// Map marker model for emergency response
+class MapMarker {
+  final LatLng position;
+  final Widget child;
+  final double width;
+  final double height;
+  final Alignment alignment;
+
+  const MapMarker({
+    required this.position,
+    required this.child,
+    this.width = 40.0,
+    this.height = 40.0,
+    this.alignment = Alignment.center,
+  });
+}
+
+/// Map polyline model for routes
+class MapPolyline {
+  final List<LatLng> points;
+  final Color color;
+  final double width;
+  final bool isDashed;
+
+  const MapPolyline({
+    required this.points,
+    this.color = Colors.blue,
+    this.width = 3.0,
+    this.isDashed = false,
+  });
+}
+
+/// Map circle model for zones
+class MapCircle {
+  final LatLng center;
+  final double radius;
+  final Color color;
+  final Color borderColor;
+  final double borderWidth;
+
+  const MapCircle({
+    required this.center,
+    required this.radius,
+    this.color = Colors.blue,
+    this.borderColor = Colors.blueAccent,
+    this.borderWidth = 2.0,
+  });
+}
+
+/// Map types for different tile sources
+enum MapType { street, satellite, terrain }
+
+/// Emergency-specific marker builders
+class EmergencyMarkers {
+  /// Create a drone marker
+  static MapMarker drone({
+    required LatLng position,
+    required DroneStatus status,
+    VoidCallback? onTap,
+  }) {
+    Color color;
+    IconData icon;
+
+    switch (status) {
+      case DroneStatus.active:
+        color = AppColors.success;
+        icon = Icons.flight;
+        break;
+      case DroneStatus.deployed:
+        color = AppColors.warning;
+        icon = Icons.flight_takeoff;
+        break;
+      case DroneStatus.maintenance:
+        color = AppColors.textSecondary;
+        icon = Icons.build;
+        break;
+      case DroneStatus.offline:
+        color = AppColors.error;
+        icon = Icons.flight_land;
+        break;
+    }
+
+    return MapMarker(
+      position: position,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+
+  /// Create an emergency location marker
+  static MapMarker emergency({
+    required LatLng position,
+    required EmergencyType type,
+    VoidCallback? onTap,
+  }) {
+    Color color;
+    IconData icon;
+
+    switch (type) {
+      case EmergencyType.medicalEmergency:
+        color = AppColors.error;
+        icon = Icons.local_hospital;
+        break;
+      case EmergencyType.fire:
+        color = Colors.orange;
+        icon = Icons.local_fire_department;
+        break;
+      case EmergencyType.naturalDisaster:
+        color = Colors.purple;
+        icon = Icons.warning;
+        break;
+      case EmergencyType.accident:
+        color = AppColors.warning;
+        icon = Icons.car_crash;
+        break;
+      default:
+        color = AppColors.error;
+        icon = Icons.emergency;
+    }
+
+    return MapMarker(
+      position: position,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+
+  /// Create a GCS station marker
+  static MapMarker gcsStation({required LatLng position, VoidCallback? onTap}) {
+    return MapMarker(
+      position: position,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.primary,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Icon(Icons.cell_tower, color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+/// Drone status enum
+enum DroneStatus { active, deployed, maintenance, offline }
+
+/// Emergency type enum
+enum EmergencyType { medicalEmergency, fire, naturalDisaster, accident, other }
