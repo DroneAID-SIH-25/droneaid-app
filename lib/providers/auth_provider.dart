@@ -1,478 +1,462 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../core/services/auth_service.dart';
 import '../models/user.dart';
 import '../models/gcs_operator.dart';
-import '../core/services/location_service.dart';
 
-enum AuthStatus { unknown, authenticated, unauthenticated }
+// Auth Service Provider
+final authServiceProvider = Provider<AuthService>((ref) {
+  return AuthService();
+});
 
-enum UserType { helpSeeker, gcsOperator }
+// Define UserType enum here to avoid conflicts
+enum AppUserType { helpSeeker, gcsOperator }
 
-class AuthProvider extends ChangeNotifier {
-  AuthStatus _status = AuthStatus.unknown;
-  UserType? _userType;
-  User? _currentUser;
-  GCSOperator? _currentGCSOperator;
-  bool _isLoading = false;
-  String? _errorMessage;
+// Auth State Model
+@immutable
+class AuthState {
+  final bool isLoading;
+  final bool isAuthenticated;
+  final AppUserType? userType;
+  final User? user;
+  final GCSOperator? gcsOperator;
+  final String? errorMessage;
+  final bool isInitialized;
 
-  // Getters
-  AuthStatus get status => _status;
-  UserType? get userType => _userType;
-  User? get currentUser => _currentUser;
-  GCSOperator? get currentGCSOperator => _currentGCSOperator;
-  bool get isLoading => _isLoading;
-  String? get errorMessage => _errorMessage;
-  bool get isAuthenticated => _status == AuthStatus.authenticated;
+  const AuthState({
+    this.isLoading = false,
+    this.isAuthenticated = false,
+    this.userType,
+    this.user,
+    this.gcsOperator,
+    this.errorMessage,
+    this.isInitialized = false,
+  });
 
-  // Constructor
-  AuthProvider() {
-    _initializeAuth();
+  AuthState copyWith({
+    bool? isLoading,
+    bool? isAuthenticated,
+    AppUserType? userType,
+    User? user,
+    GCSOperator? gcsOperator,
+    String? errorMessage,
+    bool? isInitialized,
+    bool clearError = false,
+    bool clearUser = false,
+    bool clearOperator = false,
+  }) {
+    return AuthState(
+      isLoading: isLoading ?? this.isLoading,
+      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      userType: userType ?? this.userType,
+      user: clearUser ? null : (user ?? this.user),
+      gcsOperator: clearOperator ? null : (gcsOperator ?? this.gcsOperator),
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      isInitialized: isInitialized ?? this.isInitialized,
+    );
   }
 
-  /// Initialize authentication state from stored preferences
+  String? get displayName {
+    if (user != null) return user!.displayName;
+    if (gcsOperator != null) return gcsOperator!.displayName;
+    return null;
+  }
+
+  String? get email {
+    if (user != null) return user!.email;
+    if (gcsOperator != null) return gcsOperator!.email;
+    return null;
+  }
+
+  String? get phone {
+    if (user != null) return user!.phone;
+    if (gcsOperator != null) return gcsOperator!.phoneNumber;
+    return null;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AuthState &&
+          runtimeType == other.runtimeType &&
+          isLoading == other.isLoading &&
+          isAuthenticated == other.isAuthenticated &&
+          userType == other.userType &&
+          user == other.user &&
+          gcsOperator == other.gcsOperator &&
+          errorMessage == other.errorMessage &&
+          isInitialized == other.isInitialized;
+
+  @override
+  int get hashCode =>
+      isLoading.hashCode ^
+      isAuthenticated.hashCode ^
+      userType.hashCode ^
+      user.hashCode ^
+      gcsOperator.hashCode ^
+      errorMessage.hashCode ^
+      isInitialized.hashCode;
+}
+
+// Auth Notifier
+class AuthNotifier extends Notifier<AuthState> {
+  late AuthService _authService;
+
+  @override
+  AuthState build() {
+    _authService = ref.read(authServiceProvider);
+    _initializeAuth();
+    return const AuthState();
+  }
+
+  /// Initialize authentication state
   Future<void> _initializeAuth() async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
     try {
-      _setLoading(true);
-      final prefs = await SharedPreferences.getInstance();
+      final result = await _authService.checkExistingSession();
 
-      final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-      final storedUserType = prefs.getString('userType');
-
-      if (isLoggedIn && storedUserType != null) {
-        _userType = storedUserType == 'helpSeeker'
-            ? UserType.helpSeeker
-            : UserType.gcsOperator;
-
-        // Load user data based on type
-        if (_userType == UserType.helpSeeker) {
-          await _loadUserData();
-        } else {
-          await _loadGCSOperatorData();
+      if (result.success) {
+        AppUserType? appUserType;
+        if (result.userType == UserType.helpSeeker) {
+          appUserType = AppUserType.helpSeeker;
+        } else if (result.userType == UserType.gcsOperator) {
+          appUserType = AppUserType.gcsOperator;
         }
 
-        _status = AuthStatus.authenticated;
+        state = state.copyWith(
+          isLoading: false,
+          isAuthenticated: true,
+          userType: appUserType,
+          user: result.user,
+          gcsOperator: result.gcsOperator,
+          isInitialized: true,
+        );
       } else {
-        _status = AuthStatus.unauthenticated;
-      }
-    } catch (e) {
-      debugPrint('Error initializing auth: $e');
-      _status = AuthStatus.unauthenticated;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  /// Load user data from stored preferences
-  Future<void> _loadUserData() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final userJson = prefs.getString('userData');
-
-      if (userJson != null) {
-        // This would normally deserialize from JSON
-        // For now, create a mock user
-        _currentUser = User(
-          id: prefs.getString('userId') ?? 'user_123',
-          name: prefs.getString('userName') ?? 'Help Seeker',
-          email: prefs.getString('userEmail') ?? 'helpseeker@example.com',
-          phone: prefs.getString('userPhone') ?? '+91 9876543210',
-          location: LocationData(
-            latitude: 28.6139,
-            longitude: 77.2090,
-            address: 'Delhi, India',
-            timestamp: DateTime.now(),
-          ),
+        state = state.copyWith(
+          isLoading: false,
+          isAuthenticated: false,
+          isInitialized: true,
         );
       }
     } catch (e) {
-      debugPrint('Error loading user data: $e');
-    }
-  }
-
-  /// Load GCS operator data from stored preferences
-  Future<void> _loadGCSOperatorData() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final operatorJson = prefs.getString('gcsOperatorData');
-
-      if (operatorJson != null) {
-        // This would normally deserialize from JSON
-        // For now, create a mock GCS operator
-        _currentGCSOperator = GCSOperator(
-          id: prefs.getString('gcsOperatorId') ?? 'gcs_123',
-          operatorId: prefs.getString('operatorLicense') ?? 'LIC123456',
-          firstName: prefs.getString('gcsOperatorName')?.split(' ')[0] ?? 'GCS',
-          lastName:
-              (prefs.getString('gcsOperatorName')?.split(' ').length ?? 0) > 1
-              ? prefs.getString('gcsOperatorName')!.split(' ')[1]
-              : 'Operator',
-          email: prefs.getString('gcsOperatorEmail') ?? 'operator@example.com',
-          phoneNumber: prefs.getString('gcsOperatorPhone') ?? '+91 9876543210',
-          organization: prefs.getString('department') ?? 'Emergency Response',
-          designation: prefs.getString('rank') ?? 'Senior Operator',
-          isActive: prefs.getBool('isActive') ?? true,
-        );
-      }
-    } catch (e) {
-      debugPrint('Error loading GCS operator data: $e');
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: false,
+        errorMessage: 'Failed to initialize authentication',
+        isInitialized: true,
+      );
     }
   }
 
   /// Login as Help Seeker
-  Future<bool> loginAsHelpSeeker({
-    required String email,
+  Future<bool> loginHelpSeeker({
+    required String identifier,
     required String password,
   }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
     try {
-      _setLoading(true);
-      _clearError();
+      final result = await _authService.loginHelpSeeker(
+        identifier: identifier,
+        password: password,
+      );
 
-      // Simulate API call delay
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Mock validation - in real app, this would call an API
-      if (email.isNotEmpty && password.length >= 6) {
-        // Get current location
-        final locationService = LocationService();
-        LocationData currentLocation;
-
-        try {
-          final location = await locationService.getCurrentLocation();
-          currentLocation =
-              location ??
-              LocationData(
-                latitude: 28.6139,
-                longitude: 77.2090,
-                address: 'Delhi, India',
-                timestamp: DateTime.now(),
-              );
-        } catch (e) {
-          // Use default location if location access fails
-          currentLocation = LocationData(
-            latitude: 28.6139,
-            longitude: 77.2090,
-            address: 'Delhi, India',
-            timestamp: DateTime.now(),
-          );
-        }
-
-        _currentUser = User(
-          id: 'user_${DateTime.now().millisecondsSinceEpoch}',
-          name: email.split('@')[0], // Use email prefix as name
-          email: email,
-          phone: '+91 9876543210', // Mock phone
-          location: currentLocation,
+      if (result.success) {
+        state = state.copyWith(
+          isLoading: false,
+          isAuthenticated: true,
+          userType: AppUserType.helpSeeker,
+          user: result.user,
+          clearOperator: true,
         );
-
-        _userType = UserType.helpSeeker;
-        _status = AuthStatus.authenticated;
-
-        // Save to preferences
-        await _saveAuthState();
-
         return true;
       } else {
-        _setError('Invalid email or password');
+        state = state.copyWith(isLoading: false, errorMessage: result.message);
         return false;
       }
     } catch (e) {
-      _setError('Login failed: ${e.toString()}');
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Login failed: ${e.toString()}',
+      );
       return false;
-    } finally {
-      _setLoading(false);
+    }
+  }
+
+  /// Register Help Seeker
+  Future<bool> registerHelpSeeker({
+    required String name,
+    required String phone,
+    required String aadharNumber,
+    required String password,
+    String? email,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
+    try {
+      final result = await _authService.registerHelpSeeker(
+        name: name,
+        phone: phone,
+        aadharNumber: aadharNumber,
+        password: password,
+        email: email,
+      );
+
+      if (result.success) {
+        state = state.copyWith(
+          isLoading: false,
+          isAuthenticated: true,
+          userType: AppUserType.helpSeeker,
+          user: result.user,
+          clearOperator: true,
+        );
+        return true;
+      } else {
+        state = state.copyWith(isLoading: false, errorMessage: result.message);
+        return false;
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Registration failed: ${e.toString()}',
+      );
+      return false;
     }
   }
 
   /// Login as GCS Operator
-  Future<bool> loginAsGCSOperator({
-    required String email,
+  Future<bool> loginGCSOperator({
+    required String employeeId,
     required String password,
-    required String operatorLicense,
+    String? phone,
   }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
     try {
-      _setLoading(true);
-      _clearError();
-
-      // Simulate API call delay
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Mock validation - in real app, this would call an API
-      if (email.isNotEmpty &&
-          password.length >= 6 &&
-          operatorLicense.isNotEmpty) {
-        _currentGCSOperator = GCSOperator(
-          id: 'gcs_${DateTime.now().millisecondsSinceEpoch}',
-          operatorId: operatorLicense,
-          firstName: email.split('@')[0], // Use email prefix as name
-          lastName: 'Operator',
-          email: email,
-          phoneNumber: '+91 9876543210', // Mock phone
-          organization: 'Emergency Response',
-          designation: 'Senior Operator',
-          isActive: true,
-        );
-
-        _userType = UserType.gcsOperator;
-        _status = AuthStatus.authenticated;
-
-        // Save to preferences
-        await _saveAuthState();
-
-        return true;
-      } else {
-        _setError('Invalid credentials or operator license');
-        return false;
-      }
-    } catch (e) {
-      _setError('Login failed: ${e.toString()}');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  /// Register new Help Seeker
-  Future<bool> registerHelpSeeker({
-    required String name,
-    required String email,
-    required String phone,
-    required String password,
-  }) async {
-    try {
-      _setLoading(true);
-      _clearError();
-
-      // Simulate API call delay
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Mock validation - in real app, this would call an API
-      if (name.isNotEmpty &&
-          email.isNotEmpty &&
-          phone.isNotEmpty &&
-          password.length >= 6) {
-        // Get current location
-        final locationService = LocationService();
-        LocationData currentLocation;
-
-        try {
-          final location = await locationService.getCurrentLocation();
-          currentLocation =
-              location ??
-              LocationData(
-                latitude: 28.6139,
-                longitude: 77.2090,
-                address: 'Delhi, India',
-                timestamp: DateTime.now(),
-              );
-        } catch (e) {
-          // Use default location if location access fails
-          currentLocation = LocationData(
-            latitude: 28.6139,
-            longitude: 77.2090,
-            address: 'Delhi, India',
-            timestamp: DateTime.now(),
-          );
-        }
-
-        _currentUser = User(
-          id: 'user_${DateTime.now().millisecondsSinceEpoch}',
-          name: name,
-          email: email,
-          phone: phone,
-          location: currentLocation,
-        );
-
-        _userType = UserType.helpSeeker;
-        _status = AuthStatus.authenticated;
-
-        // Save to preferences
-        await _saveAuthState();
-
-        return true;
-      } else {
-        _setError('Please fill all required fields');
-        return false;
-      }
-    } catch (e) {
-      _setError('Registration failed: ${e.toString()}');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  /// Register new GCS Operator
-  Future<bool> registerGCSOperator({
-    required String name,
-    required String email,
-    required String phone,
-    required String password,
-    required String operatorLicense,
-    required String department,
-    String? rank,
-  }) async {
-    try {
-      _setLoading(true);
-      _clearError();
-
-      // Simulate API call delay
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Mock validation - in real app, this would call an API
-      if (name.isNotEmpty &&
-          email.isNotEmpty &&
-          phone.isNotEmpty &&
-          password.length >= 6 &&
-          operatorLicense.isNotEmpty &&
-          department.isNotEmpty) {
-        _currentGCSOperator = GCSOperator(
-          id: 'gcs_${DateTime.now().millisecondsSinceEpoch}',
-          operatorId: operatorLicense,
-          firstName: name.split(' ')[0],
-          lastName: name.split(' ').length > 1 ? name.split(' ')[1] : '',
-          email: email,
-          phoneNumber: phone,
-          organization: department,
-          designation: rank ?? 'Operator',
-          isActive: true,
-        );
-
-        _userType = UserType.gcsOperator;
-        _status = AuthStatus.authenticated;
-
-        // Save to preferences
-        await _saveAuthState();
-
-        return true;
-      } else {
-        _setError('Please fill all required fields');
-        return false;
-      }
-    } catch (e) {
-      _setError('Registration failed: ${e.toString()}');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  /// Logout current user
-  Future<void> logout() async {
-    try {
-      _setLoading(true);
-
-      // Clear stored authentication data
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-
-      // Reset state
-      _status = AuthStatus.unauthenticated;
-      _userType = null;
-      _currentUser = null;
-      _currentGCSOperator = null;
-      _clearError();
-    } catch (e) {
-      debugPrint('Error during logout: $e');
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  /// Save authentication state to preferences
-  Future<void> _saveAuthState() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setString(
-        'userType',
-        _userType == UserType.helpSeeker ? 'helpSeeker' : 'gcsOperator',
+      final result = await _authService.loginGCSOperator(
+        employeeId: employeeId,
+        password: password,
+        phone: phone,
       );
 
-      if (_currentUser != null) {
-        await prefs.setString('userId', _currentUser!.id);
-        await prefs.setString('userName', _currentUser!.name);
-        await prefs.setString('userEmail', _currentUser!.email);
-        await prefs.setString('userPhone', _currentUser!.phone);
-      }
-
-      if (_currentGCSOperator != null) {
-        await prefs.setString('gcsOperatorId', _currentGCSOperator!.id);
-        await prefs.setString('gcsOperatorName', _currentGCSOperator!.fullName);
-        await prefs.setString('gcsOperatorEmail', _currentGCSOperator!.email);
-        await prefs.setString(
-          'gcsOperatorPhone',
-          _currentGCSOperator!.phoneNumber,
+      if (result.success) {
+        state = state.copyWith(
+          isLoading: false,
+          isAuthenticated: true,
+          userType: AppUserType.gcsOperator,
+          gcsOperator: result.gcsOperator,
+          clearUser: true,
         );
-        await prefs.setString(
-          'operatorLicense',
-          _currentGCSOperator!.operatorId,
-        );
-        await prefs.setString('department', _currentGCSOperator!.organization);
-        await prefs.setString('rank', _currentGCSOperator!.designation);
-        await prefs.setBool('isActive', _currentGCSOperator!.isActive);
+        return true;
+      } else {
+        state = state.copyWith(isLoading: false, errorMessage: result.message);
+        return false;
       }
     } catch (e) {
-      debugPrint('Error saving auth state: $e');
-    }
-  }
-
-  /// Update user profile
-  Future<bool> updateUserProfile({
-    required String name,
-    required String phone,
-  }) async {
-    try {
-      _setLoading(true);
-      _clearError();
-
-      if (_userType == UserType.helpSeeker && _currentUser != null) {
-        _currentUser = User(
-          id: _currentUser!.id,
-          name: name,
-          email: _currentUser!.email,
-          phone: phone,
-          location: _currentUser!.location,
-        );
-      } else if (_userType == UserType.gcsOperator &&
-          _currentGCSOperator != null) {
-        _currentGCSOperator = GCSOperator(
-          id: _currentGCSOperator!.id,
-          operatorId: _currentGCSOperator!.operatorId,
-          firstName: name.split(' ')[0],
-          lastName: name.split(' ').length > 1 ? name.split(' ')[1] : '',
-          email: _currentGCSOperator!.email,
-          phoneNumber: phone,
-          organization: _currentGCSOperator!.organization,
-          designation: _currentGCSOperator!.designation,
-          isActive: _currentGCSOperator!.isActive,
-        );
-      }
-
-      await _saveAuthState();
-      return true;
-    } catch (e) {
-      _setError('Failed to update profile: ${e.toString()}');
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Login failed: ${e.toString()}',
+      );
       return false;
-    } finally {
-      _setLoading(false);
     }
   }
 
-  /// Helper methods
-  void _setLoading(bool loading) {
-    _isLoading = loading;
-    notifyListeners();
+  /// Verify Aadhar Number
+  Future<VerificationResult> verifyAadharNumber(String aadharNumber) async {
+    return await _authService.verifyAadharNumber(aadharNumber);
   }
 
-  void _setError(String error) {
-    _errorMessage = error;
-    notifyListeners();
+  /// Update User Profile
+  Future<bool> updateProfile({
+    String? name,
+    String? phone,
+    String? email,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
+    try {
+      final result = await _authService.updateUserProfile(
+        name: name,
+        phone: phone,
+        email: email,
+      );
+
+      if (result.success) {
+        state = state.copyWith(isLoading: false, user: result.user);
+        return true;
+      } else {
+        state = state.copyWith(isLoading: false, errorMessage: result.message);
+        return false;
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Failed to update profile: ${e.toString()}',
+      );
+      return false;
+    }
   }
 
-  void _clearError() {
-    _errorMessage = null;
-    notifyListeners();
+  /// Change Password
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
+    try {
+      final result = await _authService.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+
+      if (result.success) {
+        state = state.copyWith(isLoading: false);
+        return true;
+      } else {
+        state = state.copyWith(isLoading: false, errorMessage: result.message);
+        return false;
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Failed to change password: ${e.toString()}',
+      );
+      return false;
+    }
+  }
+
+  /// Reset Password
+  Future<bool> resetPassword({required String identifier}) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
+    try {
+      final result = await _authService.resetPassword(identifier: identifier);
+
+      if (result.success) {
+        state = state.copyWith(isLoading: false);
+        return true;
+      } else {
+        state = state.copyWith(isLoading: false, errorMessage: result.message);
+        return false;
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Failed to reset password: ${e.toString()}',
+      );
+      return false;
+    }
+  }
+
+  /// Logout
+  Future<void> logout() async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
+    try {
+      await _authService.logout();
+      state = const AuthState(isInitialized: true);
+    } catch (e) {
+      // Even if logout fails, clear the local state
+      state = const AuthState(isInitialized: true);
+    }
+  }
+
+  /// Clear error message
+  void clearError() {
+    state = state.copyWith(clearError: true);
+  }
+
+  /// Refresh user session
+  Future<void> refreshSession() async {
+    await _initializeAuth();
   }
 }
+
+// Auth Provider
+final authProvider = NotifierProvider<AuthNotifier, AuthState>(() {
+  return AuthNotifier();
+});
+
+// Convenience providers
+final isAuthenticatedProvider = Provider<bool>((ref) {
+  return ref.watch(authProvider).isAuthenticated;
+});
+
+final currentUserProvider = Provider<User?>((ref) {
+  return ref.watch(authProvider).user;
+});
+
+final currentGCSOperatorProvider = Provider<GCSOperator?>((ref) {
+  return ref.watch(authProvider).gcsOperator;
+});
+
+final userTypeProvider = Provider<AppUserType?>((ref) {
+  return ref.watch(authProvider).userType;
+});
+
+final authErrorProvider = Provider<String?>((ref) {
+  return ref.watch(authProvider).errorMessage;
+});
+
+final authLoadingProvider = Provider<bool>((ref) {
+  return ref.watch(authProvider).isLoading;
+});
+
+final authInitializedProvider = Provider<bool>((ref) {
+  return ref.watch(authProvider).isInitialized;
+});
+
+// Form validation providers
+final phoneValidationProvider = Provider.family<String?, String>((ref, phone) {
+  if (phone.isEmpty) return 'Phone number is required';
+
+  final cleanPhone = phone.replaceAll(RegExp(r'[^\d+]'), '');
+  final isValidIndian =
+      RegExp(r'^\+91[6-9]\d{9}$').hasMatch(cleanPhone) ||
+      RegExp(r'^[6-9]\d{9}$').hasMatch(cleanPhone);
+
+  if (!isValidIndian) return 'Please enter a valid Indian mobile number';
+
+  return null;
+});
+
+final aadharValidationProvider = Provider.family<String?, String>((
+  ref,
+  aadhar,
+) {
+  if (aadhar.isEmpty) return 'Aadhar number is required';
+
+  final cleanAadhar = aadhar.replaceAll(RegExp(r'[^\d]'), '');
+  if (cleanAadhar.length != 12) return 'Aadhar number must be 12 digits';
+
+  return null;
+});
+
+final nameValidationProvider = Provider.family<String?, String>((ref, name) {
+  if (name.isEmpty) return 'Name is required';
+  if (name.trim().length < 2) return 'Name must be at least 2 characters';
+  if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(name.trim())) {
+    return 'Name can only contain letters and spaces';
+  }
+  return null;
+});
+
+final passwordValidationProvider = Provider.family<String?, String>((
+  ref,
+  password,
+) {
+  if (password.isEmpty) return 'Password is required';
+  if (password.length < 6) return 'Password must be at least 6 characters';
+  return null;
+});
+
+final employeeIdValidationProvider = Provider.family<String?, String>((
+  ref,
+  employeeId,
+) {
+  if (employeeId.isEmpty) return 'Employee ID is required';
+  if (employeeId.length < 3) return 'Employee ID must be at least 3 characters';
+  return null;
+});

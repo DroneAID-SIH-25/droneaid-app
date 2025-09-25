@@ -1,243 +1,348 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants/app_strings.dart';
-import '../core/constants/app_colors.dart';
-import '../core/utils/app_theme.dart';
 import '../routes/app_router.dart';
-import '../models/user.dart';
+import '../providers/auth_provider.dart';
 
-class UserTypeSelectionScreen extends StatefulWidget {
+class UserTypeSelectionScreen extends ConsumerStatefulWidget {
   const UserTypeSelectionScreen({super.key});
 
   @override
-  State<UserTypeSelectionScreen> createState() =>
+  ConsumerState<UserTypeSelectionScreen> createState() =>
       _UserTypeSelectionScreenState();
 }
 
-class _UserTypeSelectionScreenState extends State<UserTypeSelectionScreen>
+class _UserTypeSelectionScreenState
+    extends ConsumerState<UserTypeSelectionScreen>
     with TickerProviderStateMixin {
-  late AnimationController _animationController;
+  late AnimationController _fadeController;
+  late AnimationController _scaleController;
   late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
+  late Animation<double> _scaleAnimation;
 
-  UserType? _selectedUserType;
+  int? _selectedUserType;
 
   @override
   void initState() {
     super.initState();
 
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
     );
 
-    _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeOutBack,
-          ),
-        );
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _scaleController, curve: Curves.elasticOut),
+    );
 
-    _animationController.forward();
+    // Start animations
+    _fadeController.forward();
+    Future.delayed(const Duration(milliseconds: 200), () {
+      _scaleController.forward();
+    });
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _fadeController.dispose();
+    _scaleController.dispose();
     super.dispose();
-  }
-
-  void _selectUserType(UserType userType) {
-    setState(() {
-      _selectedUserType = userType;
-    });
-  }
-
-  void _proceedToLogin() {
-    if (_selectedUserType != null) {
-      final userTypeString = _selectedUserType == UserType.helpSeeker
-          ? 'help_seeker'
-          : 'gcs_operator';
-      AppRouter.goToLogin(userType: userTypeString);
-    }
-  }
-
-  void _proceedToRegister() {
-    if (_selectedUserType != null) {
-      final userTypeString = _selectedUserType == UserType.helpSeeker
-          ? 'help_seeker'
-          : 'gcs_operator';
-      AppRouter.goToRegister(userType: userTypeString);
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppStrings.appName),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => AppRouter.goBack(),
-        ),
-      ),
-      extendBodyBehindAppBar: true,
       body: Container(
-        decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              theme.primaryColor.withOpacity(0.1),
+              theme.primaryColor.withOpacity(0.05),
+              Colors.white,
+            ],
+          ),
+        ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                // Header Section
-                FadeTransition(
+          child: Column(
+            children: [
+              // Header Section
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: FadeTransition(
                   opacity: _fadeAnimation,
                   child: Column(
                     children: [
-                      const SizedBox(height: 20),
-                      const Text(
+                      // App Logo
+                      Hero(
+                        tag: 'drone_aid_logo',
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: theme.primaryColor,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: theme.primaryColor.withOpacity(0.3),
+                                blurRadius: 15,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.flight_takeoff_rounded,
+                                size: 35,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(height: 2),
+                              Icon(
+                                Icons.emergency,
+                                size: 18,
+                                color: Colors.white.withOpacity(0.8),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Title
+                      Text(
                         AppStrings.selectUserType,
-                        style: TextStyle(
-                          fontSize: 28,
+                        style: theme.textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: theme.colorScheme.onSurface,
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
+
+                      const SizedBox(height: 8),
+
+                      // Subtitle
+                      Text(
                         AppStrings.selectUserTypeSubtitle,
-                        style: TextStyle(fontSize: 16, color: Colors.white70),
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
                   ),
                 ),
+              ),
 
-                const SizedBox(height: 40),
-
-                // User Type Cards
-                Expanded(
-                  child: SlideTransition(
-                    position: _slideAnimation,
-                    child: Column(
-                      children: [
-                        // Help Seeker Card
-                        Expanded(
-                          child: _buildUserTypeCard(
-                            userType: UserType.helpSeeker,
+              // User Type Options
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: ScaleTransition(
+                    scale: _scaleAnimation,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Help Seeker Option
+                          _buildUserTypeCard(
+                            userType: 0,
                             title: AppStrings.helpSeeker,
                             description: AppStrings.helpSeekerDescription,
-                            icon: Icons.emergency,
-                            color: AppColors.secondary,
+                            icon: Icons.emergency_rounded,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.red.shade400,
+                                Colors.red.shade600,
+                              ],
+                            ),
                             features: [
                               'Request emergency assistance',
-                              'Track mission progress',
                               'Real-time location sharing',
-                              'Emergency contact system',
+                              'Track rescue mission status',
+                              'Direct communication with GCS',
                             ],
+                            theme: theme,
                           ),
-                        ),
 
-                        const SizedBox(height: 20),
+                          const SizedBox(height: 16),
 
-                        // GCS Operator Card
-                        Expanded(
-                          child: _buildUserTypeCard(
-                            userType: UserType.gcsOperator,
+                          // GCS Operator Option
+                          _buildUserTypeCard(
+                            userType: 1,
                             title: AppStrings.gcsOperator,
                             description: AppStrings.gcsOperatorDescription,
-                            icon: Icons.flight,
-                            color: AppColors.primary,
+                            icon: Icons.flight_rounded,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                theme.primaryColor,
+                                theme.primaryColor.withOpacity(0.8),
+                              ],
+                            ),
                             features: [
-                              'Manage drone operations',
-                              'Coordinate emergency response',
-                              'Monitor mission status',
-                              'Fleet management',
+                              'Manage drone fleet operations',
+                              'Monitor emergency requests',
+                              'Coordinate rescue missions',
+                              'Real-time mission tracking',
                             ],
+                            theme: theme,
                           ),
-                        ),
-                      ],
+
+                          const SizedBox(height: 24),
+
+                          // Continue Button
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            transitionBuilder:
+                                (Widget child, Animation<double> animation) {
+                                  return SlideTransition(
+                                    position:
+                                        Tween<Offset>(
+                                          begin: const Offset(0, 0.5),
+                                          end: Offset.zero,
+                                        ).animate(
+                                          CurvedAnimation(
+                                            parent: animation,
+                                            curve: Curves.easeInOut,
+                                          ),
+                                        ),
+                                    child: FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                            child: _selectedUserType != null
+                                ? Container(
+                                    key: const ValueKey('continue_button'),
+                                    width: double.infinity,
+                                    height: 56,
+                                    margin: const EdgeInsets.only(top: 8),
+                                    child: ElevatedButton(
+                                      onPressed: _handleContinue,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: theme.primaryColor,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                        elevation: 8,
+                                        shadowColor: theme.primaryColor
+                                            .withOpacity(0.4),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            'Continue',
+                                            style: theme.textTheme.titleMedium
+                                                ?.copyWith(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Icon(
+                                            Icons.arrow_forward_rounded,
+                                            size: 20,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : const SizedBox(
+                                    key: ValueKey('empty_button'),
+                                    height: 0,
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
+              ),
 
-                const SizedBox(height: 30),
-
-                // Action Buttons
-                FadeTransition(
+              // Bottom Section
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: FadeTransition(
                   opacity: _fadeAnimation,
                   child: Column(
                     children: [
-                      // Continue Button
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _selectedUserType != null
-                              ? _proceedToLogin
-                              : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: _selectedUserType != null
-                                ? AppColors.primary
-                                : AppColors.textSecondary,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: _selectedUserType != null ? 4 : 0,
+                      // Help Text
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: theme.primaryColor.withOpacity(0.2),
                           ),
-                          child: Text(
-                            _selectedUserType != null
-                                ? '${AppStrings.signIn} as ${_selectedUserType!.displayName}'
-                                : 'Select a user type to continue',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              color: theme.primaryColor,
+                              size: 20,
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Choose your role to access personalized features and interface designed for your specific needs.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.7),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
 
                       const SizedBox(height: 12),
 
-                      // Register Button
-                      SizedBox(
-                        width: double.infinity,
-                        child: TextButton(
-                          onPressed: _selectedUserType != null
-                              ? _proceedToRegister
-                              : null,
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          child: Text(
-                            _selectedUserType != null
-                                ? '${AppStrings.register} as ${_selectedUserType!.displayName}'
-                                : AppStrings.noAccount,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: _selectedUserType != null
-                                  ? Colors.white
-                                  : Colors.white60,
-                            ),
-                          ),
+                      // Back Button
+                      TextButton.icon(
+                        onPressed: () {
+                          AppRouter.goToWelcome();
+                        },
+                        icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                        label: const Text('Back to Welcome'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: theme.colorScheme.onSurface
+                              .withOpacity(0.6),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -245,181 +350,190 @@ class _UserTypeSelectionScreenState extends State<UserTypeSelectionScreen>
   }
 
   Widget _buildUserTypeCard({
-    required UserType userType,
+    required int userType,
     required String title,
     required String description,
     required IconData icon,
-    required Color color,
+    required Gradient gradient,
     required List<String> features,
+    required ThemeData theme,
   }) {
     final isSelected = _selectedUserType == userType;
 
     return GestureDetector(
-      onTap: () => _selectUserType(userType),
+      onTap: () {
+        setState(() {
+          _selectedUserType = userType;
+        });
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.all(20),
+        width: double.infinity,
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.white.withOpacity(0.1),
+          gradient: isSelected ? gradient : null,
+          color: isSelected ? null : Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? color : Colors.white.withOpacity(0.3),
-            width: isSelected ? 3 : 1,
+            color: isSelected
+                ? Colors.transparent
+                : theme.colorScheme.outline.withOpacity(0.2),
+            width: isSelected ? 0 : 1,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: color.withOpacity(0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : [],
+          boxShadow: [
+            BoxShadow(
+              color: isSelected
+                  ? gradient.colors.first.withOpacity(0.4)
+                  : Colors.black.withOpacity(0.05),
+              blurRadius: isSelected ? 20 : 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Icon and Title Row
-            Row(
-              children: [
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  // Icon
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Colors.white.withOpacity(0.2)
+                          : gradient.colors.first.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected
+                            ? Colors.white.withOpacity(0.3)
+                            : gradient.colors.first.withOpacity(0.2),
+                      ),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 30,
+                      color: isSelected ? Colors.white : gradient.colors.first,
+                    ),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  // Title and Description
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isSelected
+                                ? Colors.white
+                                : theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          description,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: isSelected
+                                ? Colors.white.withOpacity(0.9)
+                                : theme.colorScheme.onSurface.withOpacity(0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Selection Indicator
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected ? Colors.white : Colors.transparent,
+                      border: Border.all(
+                        color: isSelected
+                            ? Colors.transparent
+                            : theme.colorScheme.outline.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: isSelected
+                        ? Icon(
+                            Icons.check_rounded,
+                            size: 16,
+                            color: gradient.colors.first,
+                          )
+                        : null,
+                  ),
+                ],
+              ),
+
+              if (isSelected) ...[
+                const SizedBox(height: 20),
                 Container(
-                  width: 60,
-                  height: 60,
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? color.withOpacity(0.1)
-                        : Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(15),
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
                   ),
-                  child: Icon(
-                    icon,
-                    size: 30,
-                    color: isSelected ? color : Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: isSelected
-                              ? AppColors.textPrimary
-                              : Colors.white,
+                        'Key Features:',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        description,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isSelected
-                              ? AppColors.textSecondary
-                              : Colors.white70,
+                      const SizedBox(height: 12),
+                      ...features.map(
+                        (feature) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline_rounded,
+                                size: 16,
+                                color: Colors.white.withOpacity(0.8),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  feature,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white.withOpacity(0.9),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ],
-            ),
-
-            const SizedBox(height: 20),
-
-            // Features List
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Key Features:',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? AppColors.textPrimary : Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: features.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                margin: const EdgeInsets.only(
-                                  top: 8,
-                                  right: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? color : Colors.white70,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  features[index],
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: isSelected
-                                        ? AppColors.textSecondary
-                                        : Colors.white70,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Selection Indicator
-            if (isSelected)
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: color, width: 1),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.check_circle, color: color, size: 16),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Selected',
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  void _handleContinue() {
+    if (_selectedUserType == null) return;
+
+    final userType = _selectedUserType == 0 ? 'helpSeeker' : 'gcsOperator';
+
+    // Navigate to respective login screen
+    AppRouter.goToLogin(userType: userType);
   }
 }

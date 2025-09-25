@@ -4,6 +4,9 @@ import '../screens/welcome_screen.dart';
 import '../screens/user_type_selection_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
+import '../screens/auth/help_seeker_auth_screen.dart';
+import '../screens/auth/gcs_operator_auth_screen.dart';
+import '../screens/auth/verification_loading_screen.dart';
 import '../screens/help_seeker/help_seeker_dashboard.dart';
 import '../screens/help_seeker/request_help_screen.dart';
 import '../screens/help_seeker/my_requests_screen.dart';
@@ -52,6 +55,25 @@ class AppRouter {
         builder: (context, state) {
           final userType = state.uri.queryParameters['userType'];
           return RegisterScreen(userType: userType);
+        },
+      ),
+      GoRoute(
+        path: '/help-seeker-auth',
+        name: 'helpSeekerAuth',
+        builder: (context, state) => const HelpSeekerAuthScreen(),
+      ),
+      GoRoute(
+        path: '/gcs-operator-auth',
+        name: 'gcsOperatorAuth',
+        builder: (context, state) => const GCSOperatorAuthScreen(),
+      ),
+      GoRoute(
+        path: '/verification',
+        name: 'verification',
+        builder: (context, state) {
+          final verificationType =
+              state.uri.queryParameters['type'] ?? 'default';
+          return VerificationLoadingScreen(verificationType: verificationType);
         },
       ),
 
@@ -214,6 +236,18 @@ class AppRouter {
 
   static void goToSettings() {
     _router.goNamed('settings');
+  }
+
+  static void goToHelpSeekerAuth() {
+    _router.goNamed('helpSeekerAuth');
+  }
+
+  static void goToGCSOperatorAuth() {
+    _router.goNamed('gcsOperatorAuth');
+  }
+
+  static void goToVerification({String type = 'default'}) {
+    _router.goNamed('verification', queryParameters: {'type': type});
   }
 
   static void goBack() {

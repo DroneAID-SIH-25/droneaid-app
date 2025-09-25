@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import '../core/constants/app_strings.dart';
-import '../core/constants/app_colors.dart';
-import '../core/utils/app_theme.dart';
+import '../core/constants/app_constants.dart';
 import '../routes/app_router.dart';
+import '../providers/auth_provider.dart';
 
-class WelcomeScreen extends StatefulWidget {
+class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
   @override
-  State<WelcomeScreen> createState() => _WelcomeScreenState();
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
 }
 
-class _WelcomeScreenState extends State<WelcomeScreen>
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
     with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -22,7 +24,6 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   void initState() {
     super.initState();
 
-    // Initialize animations
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -38,14 +39,19 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     );
 
     _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
-          CurvedAnimation(parent: _slideController, curve: Curves.easeOutBack),
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(parent: _slideController, curve: Curves.elasticOut),
         );
 
     // Start animations
     _fadeController.forward();
-    Future.delayed(const Duration(milliseconds: 300), () {
+    Future.delayed(const Duration(milliseconds: 500), () {
       _slideController.forward();
+    });
+
+    // Check authentication status after animations
+    Future.delayed(const Duration(seconds: 2), () {
+      _checkAuthenticationStatus();
     });
   }
 
@@ -56,225 +62,289 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     super.dispose();
   }
 
+  void _checkAuthenticationStatus() {
+    final authState = ref.read(authProvider);
+
+    if (authState.isInitialized) {
+      if (authState.isAuthenticated) {
+        // Navigate based on user type
+        if (authState.userType == AppUserType.helpSeeker) {
+          AppRouter.goToHelpSeekerDashboard();
+        } else if (authState.userType == AppUserType.gcsOperator) {
+          AppRouter.goToGCSDashboard();
+        }
+      } else {
+        // Navigate to user type selection after a delay
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          AppRouter.goToUserTypeSelection();
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      if (next.isInitialized && previous?.isInitialized != true) {
+        _checkAuthenticationStatus();
+      }
+    });
+
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              theme.primaryColor,
+              theme.primaryColor.withOpacity(0.8),
+              theme.colorScheme.secondary,
+            ],
+          ),
+        ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // App Logo and Branding
-                      FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: SlideTransition(
-                          position: _slideAnimation,
-                          child: Column(
-                            children: [
-                              // Logo Container
-                              Container(
-                                width: 150,
-                                height: 150,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(30),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.3),
-                                      blurRadius: 20,
-                                      offset: const Offset(0, 10),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.flight,
-                                  size: 80,
-                                  color: AppColors.primary,
-                                ),
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: SlideTransition(
+                      position: _slideAnimation,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Logo Container
+                          Hero(
+                            tag: 'drone_aid_logo',
+                            child: Container(
+                              width: 140,
+                              height: 140,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(30),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 40),
-
-                              // App Name
-                              const Text(
-                                AppStrings.appName,
-                                style: TextStyle(
-                                  fontSize: 42,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 2,
-                                ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.flight_takeoff_rounded,
+                                    size: 60,
+                                    color: theme.primaryColor,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Icon(
+                                    Icons.emergency,
+                                    size: 30,
+                                    color: theme.colorScheme.secondary,
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 12),
+                            ),
+                          ),
 
-                              // Tagline
-                              const Text(
-                                AppStrings.appTagline,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w300,
-                                ),
-                                textAlign: TextAlign.center,
+                          const SizedBox(height: 40),
+
+                          // App Name
+                          Text(
+                            AppStrings.appName,
+                            style: theme.textTheme.headlineLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 42,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // Tagline
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.3),
                               ),
-                              const SizedBox(height: 8),
+                            ),
+                            child: Text(
+                              AppStrings.appTagline,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
 
-                              // Description
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 20),
-                                child: Text(
-                                  AppStrings.welcomeSubtitle,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.white60,
-                                    height: 1.5,
+                          const SizedBox(height: 60),
+
+                          // Loading Indicator
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              children: [
+                                SpinKitPulse(color: Colors.white, size: 40),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Initializing Emergency Response System...',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 14,
                                   ),
                                   textAlign: TextAlign.center,
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Bottom Section
-                SlideTransition(
-                  position:
-                      Tween<Offset>(
-                        begin: const Offset(0, 1),
-                        end: Offset.zero,
-                      ).animate(
-                        CurvedAnimation(
-                          parent: _slideController,
-                          curve: const Interval(
-                            0.5,
-                            1.0,
-                            curve: Curves.easeOut,
-                          ),
-                        ),
-                      ),
-                  child: Column(
-                    children: [
-                      // Get Started Button
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            AppRouter.goToUserTypeSelection();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: AppColors.primary,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              ],
                             ),
-                            elevation: 4,
-                          ),
-                          child: const Text(
-                            AppStrings.getStarted,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Features Row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildFeatureItem(
-                            icon: Icons.emergency,
-                            label: 'Emergency\nResponse',
-                          ),
-                          _buildFeatureItem(
-                            icon: Icons.flight_takeoff,
-                            label: 'Drone\nOperations',
-                          ),
-                          _buildFeatureItem(
-                            icon: Icons.track_changes,
-                            label: 'Real-time\nTracking',
                           ),
                         ],
                       ),
-                      const SizedBox(height: 32),
+                    ),
+                  ),
+                ),
+              ),
 
-                      // Team Attribution
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.2),
-                            width: 1,
+              // Bottom Section
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    // Features Row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildFeatureItem(
+                          icon: Icons.speed,
+                          label: 'Fast Response',
+                          theme: theme,
+                        ),
+                        _buildFeatureItem(
+                          icon: Icons.location_on,
+                          label: 'Real-time Tracking',
+                          theme: theme,
+                        ),
+                        _buildFeatureItem(
+                          icon: Icons.security,
+                          label: 'Secure & Reliable',
+                          theme: theme,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Skip Button (appears after delay)
+                    FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: TextButton(
+                        onPressed: () {
+                          AppRouter.goToUserTypeSelection();
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white.withOpacity(0.8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
                           ),
                         ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.group,
-                              color: Colors.white70,
-                              size: 20,
+                            Text(
+                              'Skip',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 16,
+                              ),
                             ),
                             const SizedBox(width: 8),
-                            const Text(
-                              AppStrings.poweredBy,
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 16,
+                              color: Colors.white.withOpacity(0.8),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Team Credit
+                    Text(
+                      AppStrings.poweredBy,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Version
+                    Text(
+                      'Version ${AppConstants.appVersion}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 11,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildFeatureItem({required IconData icon, required String label}) {
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String label,
+    required ThemeData theme,
+  }) {
     return Column(
       children: [
         Container(
-          width: 60,
-          height: 60,
+          width: 50,
+          height: 50,
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.3)),
           ),
-          child: Icon(icon, color: Colors.white, size: 28),
+          child: Icon(icon, color: Colors.white, size: 24),
         ),
         const SizedBox(height: 8),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white70,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: Colors.white.withOpacity(0.8),
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            height: 1.2,
           ),
           textAlign: TextAlign.center,
         ),
