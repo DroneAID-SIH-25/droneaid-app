@@ -1,194 +1,237 @@
-import 'package:json_annotation/json_annotation.dart';
 import 'package:uuid/uuid.dart';
 import 'user.dart';
 import 'drone.dart';
+import 'emergency_request.dart';
 
-part 'mission.g.dart';
-
-@JsonSerializable()
 class Mission {
   final String id;
+  final String emergencyRequestId;
+  final String droneId;
+  final String operatorId;
   final String title;
   final String description;
-  final MissionType type;
   final MissionStatus status;
-  final MissionPriority priority;
-  final String requesterId;
-  final String? assignedOperatorId;
-  final String? assignedDroneId;
-  final Location startLocation;
-  final Location? targetLocation;
-  final List<Location> waypoints;
+  final Priority priority;
   final DateTime createdAt;
-  final DateTime? scheduledStartTime;
-  final DateTime? actualStartTime;
+  final DateTime? startedAt;
   final DateTime? completedAt;
-  final DateTime updatedAt;
-  final String? emergencyRequestId;
-  final double? estimatedDuration; // in minutes
-  final double? actualDuration; // in minutes
-  final double? estimatedDistance; // in kilometers
-  final double? actualDistance; // in kilometers
-  final List<String> requiredCapabilities;
+  final int estimatedDuration; // in minutes
+  final LocationData targetLocation;
+  final List<LocationData> waypoints;
+  final String? completionNotes;
   final List<MissionUpdate> updates;
-  final Map<String, dynamic>? metadata;
-  final List<String> attachments;
-  final String? notes;
-  final bool isEmergency;
-  final String? contactPhoneNumber;
-  final String? contactEmail;
 
   Mission({
     String? id,
+    required this.emergencyRequestId,
+    required this.droneId,
+    required this.operatorId,
     required this.title,
     required this.description,
-    required this.type,
     this.status = MissionStatus.pending,
-    required this.priority,
-    required this.requesterId,
-    this.assignedOperatorId,
-    this.assignedDroneId,
-    required this.startLocation,
-    this.targetLocation,
-    List<Location>? waypoints,
+    this.priority = Priority.medium,
     DateTime? createdAt,
-    this.scheduledStartTime,
-    this.actualStartTime,
+    this.startedAt,
     this.completedAt,
-    DateTime? updatedAt,
-    this.emergencyRequestId,
-    this.estimatedDuration,
-    this.actualDuration,
-    this.estimatedDistance,
-    this.actualDistance,
-    List<String>? requiredCapabilities,
+    required this.estimatedDuration,
+    required this.targetLocation,
+    List<LocationData>? waypoints,
+    this.completionNotes,
     List<MissionUpdate>? updates,
-    this.metadata,
-    List<String>? attachments,
-    this.notes,
-    this.isEmergency = false,
-    this.contactPhoneNumber,
-    this.contactEmail,
   }) : id = id ?? const Uuid().v4(),
-       waypoints = waypoints ?? [],
-       requiredCapabilities = requiredCapabilities ?? [],
-       updates = updates ?? [],
-       attachments = attachments ?? [],
        createdAt = createdAt ?? DateTime.now(),
-       updatedAt = updatedAt ?? DateTime.now();
+       waypoints = waypoints ?? [],
+       updates = updates ?? [];
 
   bool get isActive =>
       status == MissionStatus.assigned || status == MissionStatus.inProgress;
 
   bool get isCompleted =>
-      status == MissionStatus.completed || status == MissionStatus.cancelled;
+      status == MissionStatus.completed ||
+      status == MissionStatus.cancelled ||
+      status == MissionStatus.failed;
 
-  bool get canBeStarted =>
-      status == MissionStatus.assigned &&
-      assignedOperatorId != null &&
-      assignedDroneId != null;
+  bool get isPending => status == MissionStatus.pending;
 
-  bool get hasTimeConstraint => scheduledStartTime != null;
+  bool get isInProgress => status == MissionStatus.inProgress;
 
-  bool get isOverdue =>
-      scheduledStartTime != null &&
-      scheduledStartTime!.isBefore(DateTime.now()) &&
-      status != MissionStatus.completed;
+  bool get isSuccessful => status == MissionStatus.completed;
 
-  Duration? get totalDuration {
-    if (actualStartTime != null && completedAt != null) {
-      return completedAt!.difference(actualStartTime!);
+  bool get isCancelled => status == MissionStatus.cancelled;
+
+  bool get isFailed => status == MissionStatus.failed;
+
+  bool get isHighPriority =>
+      priority == Priority.high || priority == Priority.critical;
+
+  bool get isCritical => priority == Priority.critical;
+
+  Duration get timeSinceCreated => DateTime.now().difference(createdAt);
+
+  Duration? get actualDuration {
+    if (startedAt != null && completedAt != null) {
+      return completedAt!.difference(startedAt!);
+    }
+    return null;
+  }
+
+  Duration? get timeSinceStarted {
+    if (startedAt != null) {
+      return DateTime.now().difference(startedAt!);
     }
     return null;
   }
 
   String get statusDisplay => status.displayName;
-  String get priorityDisplay => priority.displayName;
-  String get typeDisplay => type.displayName;
 
-  double get progressPercentage {
+  String get priorityDisplay => priority.displayName;
+
+  String get durationDisplay {
+    final duration = actualDuration;
+    if (duration != null) {
+      final hours = duration.inHours;
+      final minutes = duration.inMinutes % 60;
+      if (hours > 0) {
+        return '${hours}h ${minutes}m';
+      }
+      return '${minutes}m';
+    }
+    return 'N/A';
+  }
+
+  String get estimatedDurationDisplay {
+    final hours = estimatedDuration ~/ 60;
+    final minutes = estimatedDuration % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    }
+    return '${minutes}m';
+  }
+
+  String get missionCode {
+    final statusCode = status == MissionStatus.completed
+        ? 'C'
+        : status == MissionStatus.inProgress
+        ? 'P'
+        : status == MissionStatus.cancelled
+        ? 'X'
+        : status == MissionStatus.failed
+        ? 'F'
+        : 'A';
+    final priorityCode = priority == Priority.critical
+        ? 'C'
+        : priority == Priority.high
+        ? 'H'
+        : priority == Priority.medium
+        ? 'M'
+        : 'L';
+    return 'M-$statusCode$priorityCode-${id.substring(0, 6)}';
+  }
+
+  double? get completionPercentage {
     switch (status) {
       case MissionStatus.pending:
         return 0.0;
       case MissionStatus.assigned:
-        return 25.0;
+        return 20.0;
       case MissionStatus.inProgress:
-        return 75.0;
+        return 60.0;
       case MissionStatus.completed:
         return 100.0;
       case MissionStatus.cancelled:
         return 0.0;
+      case MissionStatus.failed:
+        return 0.0;
     }
   }
 
-  factory Mission.fromJson(Map<String, dynamic> json) =>
-      _$MissionFromJson(json);
+  factory Mission.fromJson(Map<String, dynamic> json) {
+    return Mission(
+      id: json['id'] as String?,
+      emergencyRequestId: json['emergencyRequestId'] as String,
+      droneId: json['droneId'] as String,
+      operatorId: json['operatorId'] as String,
+      title: json['title'] as String,
+      description: json['description'] as String,
+      status: MissionStatus.values.firstWhere((e) => e.name == json['status']),
+      priority: Priority.values.firstWhere((e) => e.name == json['priority']),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      startedAt: json['startedAt'] != null
+          ? DateTime.parse(json['startedAt'] as String)
+          : null,
+      completedAt: json['completedAt'] != null
+          ? DateTime.parse(json['completedAt'] as String)
+          : null,
+      estimatedDuration: json['estimatedDuration'] as int,
+      targetLocation: LocationData.fromJson(
+        json['targetLocation'] as Map<String, dynamic>,
+      ),
+      waypoints: (json['waypoints'] as List?)
+          ?.map((e) => LocationData.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      completionNotes: json['completionNotes'] as String?,
+      updates: (json['updates'] as List?)
+          ?.map((e) => MissionUpdate.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 
-  Map<String, dynamic> toJson() => _$MissionToJson(this);
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'emergencyRequestId': emergencyRequestId,
+      'droneId': droneId,
+      'operatorId': operatorId,
+      'title': title,
+      'description': description,
+      'status': status.name,
+      'priority': priority.name,
+      'createdAt': createdAt.toIso8601String(),
+      'startedAt': startedAt?.toIso8601String(),
+      'completedAt': completedAt?.toIso8601String(),
+      'estimatedDuration': estimatedDuration,
+      'targetLocation': targetLocation.toJson(),
+      'waypoints': waypoints.map((e) => e.toJson()).toList(),
+      'completionNotes': completionNotes,
+      'updates': updates.map((e) => e.toJson()).toList(),
+    };
+  }
 
   Mission copyWith({
     String? id,
+    String? emergencyRequestId,
+    String? droneId,
+    String? operatorId,
     String? title,
     String? description,
-    MissionType? type,
     MissionStatus? status,
-    MissionPriority? priority,
-    String? requesterId,
-    String? assignedOperatorId,
-    String? assignedDroneId,
-    Location? startLocation,
-    Location? targetLocation,
-    List<Location>? waypoints,
+    Priority? priority,
     DateTime? createdAt,
-    DateTime? scheduledStartTime,
-    DateTime? actualStartTime,
+    DateTime? startedAt,
     DateTime? completedAt,
-    DateTime? updatedAt,
-    String? emergencyRequestId,
-    double? estimatedDuration,
-    double? actualDuration,
-    double? estimatedDistance,
-    double? actualDistance,
-    List<String>? requiredCapabilities,
+    int? estimatedDuration,
+    LocationData? targetLocation,
+    List<LocationData>? waypoints,
+    String? completionNotes,
     List<MissionUpdate>? updates,
-    Map<String, dynamic>? metadata,
-    List<String>? attachments,
-    String? notes,
-    bool? isEmergency,
-    String? contactPhoneNumber,
-    String? contactEmail,
   }) {
     return Mission(
       id: id ?? this.id,
+      emergencyRequestId: emergencyRequestId ?? this.emergencyRequestId,
+      droneId: droneId ?? this.droneId,
+      operatorId: operatorId ?? this.operatorId,
       title: title ?? this.title,
       description: description ?? this.description,
-      type: type ?? this.type,
       status: status ?? this.status,
       priority: priority ?? this.priority,
-      requesterId: requesterId ?? this.requesterId,
-      assignedOperatorId: assignedOperatorId ?? this.assignedOperatorId,
-      assignedDroneId: assignedDroneId ?? this.assignedDroneId,
-      startLocation: startLocation ?? this.startLocation,
+      createdAt: createdAt ?? this.createdAt,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
+      estimatedDuration: estimatedDuration ?? this.estimatedDuration,
       targetLocation: targetLocation ?? this.targetLocation,
       waypoints: waypoints ?? this.waypoints,
-      createdAt: createdAt ?? this.createdAt,
-      scheduledStartTime: scheduledStartTime ?? this.scheduledStartTime,
-      actualStartTime: actualStartTime ?? this.actualStartTime,
-      completedAt: completedAt ?? this.completedAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      emergencyRequestId: emergencyRequestId ?? this.emergencyRequestId,
-      estimatedDuration: estimatedDuration ?? this.estimatedDuration,
-      actualDuration: actualDuration ?? this.actualDuration,
-      estimatedDistance: estimatedDistance ?? this.estimatedDistance,
-      actualDistance: actualDistance ?? this.actualDistance,
-      requiredCapabilities: requiredCapabilities ?? this.requiredCapabilities,
+      completionNotes: completionNotes ?? this.completionNotes,
       updates: updates ?? this.updates,
-      metadata: metadata ?? this.metadata,
-      attachments: attachments ?? this.attachments,
-      notes: notes ?? this.notes,
-      isEmergency: isEmergency ?? this.isEmergency,
-      contactPhoneNumber: contactPhoneNumber ?? this.contactPhoneNumber,
-      contactEmail: contactEmail ?? this.contactEmail,
     );
   }
 
@@ -202,94 +245,108 @@ class Mission {
 
   @override
   String toString() {
-    return 'Mission{id: $id, title: $title, type: $type, status: $status, priority: $priority}';
+    return 'Mission{id: $id, title: $title, status: $status, priority: $priority}';
   }
 }
 
-@JsonSerializable()
 class MissionUpdate {
   final String id;
   final String missionId;
-  final String operatorId;
-  final MissionStatus status;
+  final String updatedBy;
   final String message;
+  final MissionStatus? newStatus;
   final DateTime timestamp;
-  final Location? location;
+  final LocationData? location;
   final Map<String, dynamic>? data;
 
   MissionUpdate({
     String? id,
     required this.missionId,
-    required this.operatorId,
-    required this.status,
+    required this.updatedBy,
     required this.message,
+    this.newStatus,
     DateTime? timestamp,
     this.location,
     this.data,
   }) : id = id ?? const Uuid().v4(),
        timestamp = timestamp ?? DateTime.now();
 
-  factory MissionUpdate.fromJson(Map<String, dynamic> json) =>
-      _$MissionUpdateFromJson(json);
+  factory MissionUpdate.fromJson(Map<String, dynamic> json) {
+    return MissionUpdate(
+      id: json['id'] as String?,
+      missionId: json['missionId'] as String,
+      updatedBy: json['updatedBy'] as String,
+      message: json['message'] as String,
+      newStatus: json['newStatus'] != null
+          ? MissionStatus.values.firstWhere((e) => e.name == json['newStatus'])
+          : null,
+      timestamp: json['timestamp'] != null
+          ? DateTime.parse(json['timestamp'] as String)
+          : null,
+      location: json['location'] != null
+          ? LocationData.fromJson(json['location'] as Map<String, dynamic>)
+          : null,
+      data: json['data'] as Map<String, dynamic>?,
+    );
+  }
 
-  Map<String, dynamic> toJson() => _$MissionUpdateToJson(this);
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'missionId': missionId,
+      'updatedBy': updatedBy,
+      'message': message,
+      'newStatus': newStatus?.name,
+      'timestamp': timestamp.toIso8601String(),
+      'location': location?.toJson(),
+      'data': data,
+    };
+  }
 
   @override
   String toString() {
-    return 'MissionUpdate{id: $id, status: $status, message: $message, timestamp: $timestamp}';
+    return 'MissionUpdate{id: $id, message: $message, timestamp: $timestamp}';
   }
 }
 
 enum MissionType {
-  @JsonValue('medical_emergency')
-  medicalEmergency,
-  @JsonValue('fire_emergency')
-  fireEmergency,
-  @JsonValue('flood_response')
-  floodResponse,
-  @JsonValue('earthquake_response')
-  earthquakeResponse,
-  @JsonValue('accident_response')
-  accidentResponse,
-  @JsonValue('search_rescue')
-  searchRescue,
-  @JsonValue('surveillance')
+  search,
+  rescue,
+  medical,
   surveillance,
-  @JsonValue('delivery')
   delivery,
-  @JsonValue('inspection')
-  inspection,
-  @JsonValue('mapping')
-  mapping,
-  @JsonValue('monitoring')
+  reconnaissance,
+  firefighting,
+  emergencyResponse,
+  evacuation,
+  assessment,
   monitoring,
-  @JsonValue('other')
   other,
 }
 
 extension MissionTypeExtension on MissionType {
   String get displayName {
     switch (this) {
-      case MissionType.medicalEmergency:
-        return 'Medical Emergency';
-      case MissionType.fireEmergency:
-        return 'Fire Emergency';
-      case MissionType.floodResponse:
-        return 'Flood Response';
-      case MissionType.earthquakeResponse:
-        return 'Earthquake Response';
-      case MissionType.accidentResponse:
-        return 'Accident Response';
-      case MissionType.searchRescue:
-        return 'Search & Rescue';
+      case MissionType.search:
+        return 'Search';
+      case MissionType.rescue:
+        return 'Rescue';
+      case MissionType.medical:
+        return 'Medical';
       case MissionType.surveillance:
         return 'Surveillance';
       case MissionType.delivery:
         return 'Delivery';
-      case MissionType.inspection:
-        return 'Inspection';
-      case MissionType.mapping:
-        return 'Mapping';
+      case MissionType.reconnaissance:
+        return 'Reconnaissance';
+      case MissionType.firefighting:
+        return 'Firefighting';
+      case MissionType.emergencyResponse:
+        return 'Emergency Response';
+      case MissionType.evacuation:
+        return 'Evacuation';
+      case MissionType.assessment:
+        return 'Assessment';
       case MissionType.monitoring:
         return 'Monitoring';
       case MissionType.other:
@@ -299,77 +356,41 @@ extension MissionTypeExtension on MissionType {
 
   String get description {
     switch (this) {
-      case MissionType.medicalEmergency:
-        return 'Emergency medical assistance and supply delivery';
-      case MissionType.fireEmergency:
-        return 'Fire detection, monitoring, and response support';
-      case MissionType.floodResponse:
-        return 'Flood monitoring and rescue operations';
-      case MissionType.earthquakeResponse:
-        return 'Earthquake damage assessment and rescue';
-      case MissionType.accidentResponse:
-        return 'Accident site monitoring and assistance';
-      case MissionType.searchRescue:
-        return 'Search and rescue operations';
+      case MissionType.search:
+        return 'Search operation using drone surveillance';
+      case MissionType.rescue:
+        return 'Rescue mission with drone assistance';
+      case MissionType.medical:
+        return 'Medical emergency response or supply delivery';
       case MissionType.surveillance:
         return 'Area surveillance and monitoring';
       case MissionType.delivery:
-        return 'Supply and equipment delivery';
-      case MissionType.inspection:
-        return 'Infrastructure and area inspection';
-      case MissionType.mapping:
-        return '3D mapping and surveying';
+        return 'Emergency supply or equipment delivery';
+      case MissionType.reconnaissance:
+        return 'Reconnaissance and data gathering';
+      case MissionType.firefighting:
+        return 'Fire suppression or fire monitoring support';
+      case MissionType.emergencyResponse:
+        return 'General emergency response mission';
+      case MissionType.evacuation:
+        return 'Evacuation assistance and coordination';
+      case MissionType.assessment:
+        return 'Damage or situation assessment';
       case MissionType.monitoring:
-        return 'Environmental and situational monitoring';
+        return 'Ongoing monitoring of situation';
       case MissionType.other:
-        return 'Other specialized missions';
-    }
-  }
-
-  List<DroneCapability> get requiredCapabilities {
-    switch (this) {
-      case MissionType.medicalEmergency:
-        return [DroneCapability.medicalDelivery, DroneCapability.liveStreaming];
-      case MissionType.fireEmergency:
-        return [DroneCapability.thermalImaging, DroneCapability.surveillance];
-      case MissionType.floodResponse:
-        return [DroneCapability.surveillance, DroneCapability.searchRescue];
-      case MissionType.earthquakeResponse:
-        return [DroneCapability.thermalImaging, DroneCapability.searchRescue];
-      case MissionType.accidentResponse:
-        return [DroneCapability.surveillance, DroneCapability.liveStreaming];
-      case MissionType.searchRescue:
-        return [DroneCapability.searchRescue, DroneCapability.thermalImaging];
-      case MissionType.surveillance:
-        return [DroneCapability.surveillance, DroneCapability.liveStreaming];
-      case MissionType.delivery:
-        return [DroneCapability.cargoTransport];
-      case MissionType.inspection:
-        return [DroneCapability.surveillance, DroneCapability.mapping];
-      case MissionType.mapping:
-        return [DroneCapability.mapping];
-      case MissionType.monitoring:
-        return [
-          DroneCapability.environmentalMonitoring,
-          DroneCapability.surveillance,
-        ];
-      case MissionType.other:
-        return [];
+        return 'Other specialized mission type';
     }
   }
 }
 
 enum MissionStatus {
-  @JsonValue('pending')
   pending,
-  @JsonValue('assigned')
   assigned,
-  @JsonValue('in_progress')
   inProgress,
-  @JsonValue('completed')
   completed,
-  @JsonValue('cancelled')
   cancelled,
+  failed,
 }
 
 extension MissionStatusExtension on MissionStatus {
@@ -385,73 +406,39 @@ extension MissionStatusExtension on MissionStatus {
         return 'Completed';
       case MissionStatus.cancelled:
         return 'Cancelled';
+      case MissionStatus.failed:
+        return 'Failed';
     }
   }
 
   String get description {
     switch (this) {
       case MissionStatus.pending:
-        return 'Waiting for operator and drone assignment';
+        return 'Mission is pending assignment';
       case MissionStatus.assigned:
-        return 'Assigned to operator and drone, ready to start';
+        return 'Mission has been assigned to a drone';
       case MissionStatus.inProgress:
-        return 'Mission is currently being executed';
+        return 'Mission is currently in progress';
       case MissionStatus.completed:
         return 'Mission completed successfully';
       case MissionStatus.cancelled:
         return 'Mission was cancelled';
-    }
-  }
-}
-
-enum MissionPriority {
-  @JsonValue('low')
-  low,
-  @JsonValue('medium')
-  medium,
-  @JsonValue('high')
-  high,
-  @JsonValue('critical')
-  critical,
-}
-
-extension MissionPriorityExtension on MissionPriority {
-  String get displayName {
-    switch (this) {
-      case MissionPriority.low:
-        return 'Low';
-      case MissionPriority.medium:
-        return 'Medium';
-      case MissionPriority.high:
-        return 'High';
-      case MissionPriority.critical:
-        return 'Critical';
+      case MissionStatus.failed:
+        return 'Mission failed to complete';
     }
   }
 
-  String get description {
-    switch (this) {
-      case MissionPriority.low:
-        return 'Non-urgent mission, can be scheduled flexibly';
-      case MissionPriority.medium:
-        return 'Moderate priority, should be addressed promptly';
-      case MissionPriority.high:
-        return 'High priority, requires immediate attention';
-      case MissionPriority.critical:
-        return 'Critical emergency, requires immediate response';
-    }
+  bool get isActive {
+    return this == MissionStatus.assigned || this == MissionStatus.inProgress;
   }
 
-  int get weight {
-    switch (this) {
-      case MissionPriority.low:
-        return 1;
-      case MissionPriority.medium:
-        return 2;
-      case MissionPriority.high:
-        return 3;
-      case MissionPriority.critical:
-        return 4;
-    }
+  bool get isCompleted {
+    return this == MissionStatus.completed ||
+        this == MissionStatus.cancelled ||
+        this == MissionStatus.failed;
+  }
+
+  bool get isSuccessful {
+    return this == MissionStatus.completed;
   }
 }

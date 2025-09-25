@@ -15,7 +15,6 @@ import '../screens/gcs/emergency_requests_screen.dart';
 import '../screens/gcs/mission_details_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/settings_screen.dart';
-import '../models/user.dart';
 
 class AppRouter {
   static final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -162,14 +161,14 @@ class AppRouter {
   static void goToLogin({String? userType}) {
     _router.goNamed(
       'login',
-      queryParameters: userType != null ? {'userType': userType} : null,
+      queryParameters: userType != null ? {'userType': userType} : {},
     );
   }
 
   static void goToRegister({String? userType}) {
     _router.goNamed(
       'register',
-      queryParameters: userType != null ? {'userType': userType} : null,
+      queryParameters: userType != null ? {'userType': userType} : {},
     );
   }
 

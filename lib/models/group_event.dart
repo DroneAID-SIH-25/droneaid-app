@@ -1,11 +1,6 @@
-import 'package:json_annotation/json_annotation.dart';
 import 'package:uuid/uuid.dart';
 import 'user.dart';
-import 'emergency_request.dart';
 
-part 'group_event.g.dart';
-
-@JsonSerializable()
 class GroupEvent {
   final String id;
   final String title;
@@ -13,7 +8,7 @@ class GroupEvent {
   final EventType type;
   final EventStatus status;
   final EventSeverity severity;
-  final Location location;
+  final LocationData location;
   final String? address;
   final double affectedRadius; // in kilometers
   final DateTime createdAt;
@@ -131,10 +126,88 @@ class GroupEvent {
     }
   }
 
-  factory GroupEvent.fromJson(Map<String, dynamic> json) =>
-      _$GroupEventFromJson(json);
+  factory GroupEvent.fromJson(Map<String, dynamic> json) {
+    return GroupEvent(
+      id: json['id'] as String?,
+      title: json['title'] as String,
+      description: json['description'] as String,
+      type: EventType.values.firstWhere((e) => e.name == json['type']),
+      status: EventStatus.values.firstWhere((e) => e.name == json['status']),
+      severity: EventSeverity.values.firstWhere(
+        (e) => e.name == json['severity'],
+      ),
+      location: LocationData.fromJson(json['location'] as Map<String, dynamic>),
+      address: json['address'] as String?,
+      affectedRadius: (json['affectedRadius'] as num?)?.toDouble() ?? 1.0,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      startTime: json['startTime'] != null
+          ? DateTime.parse(json['startTime'] as String)
+          : null,
+      endTime: json['endTime'] != null
+          ? DateTime.parse(json['endTime'] as String)
+          : null,
+      createdBy: json['createdBy'] as String,
+      assignedOperators: (json['assignedOperators'] as List?)?.cast<String>(),
+      emergencyRequestIds: (json['emergencyRequestIds'] as List?)
+          ?.cast<String>(),
+      missionIds: (json['missionIds'] as List?)?.cast<String>(),
+      affectedAreas: (json['affectedAreas'] as List?)?.cast<String>(),
+      estimatedAffectedPeople: json['estimatedAffectedPeople'] as int? ?? 0,
+      metadata: json['metadata'] as Map<String, dynamic>?,
+      updates: (json['updates'] as List?)
+          ?.map((e) => EventUpdate.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      resources: (json['resources'] as List?)?.cast<String>(),
+      weatherCondition: json['weatherCondition'] as String?,
+      isActive: json['isActive'] as bool? ?? true,
+      priority: EventPriority.values.firstWhere(
+        (e) => e.name == json['priority'],
+      ),
+      coordinatingAgency: json['coordinatingAgency'] as String?,
+      contactPerson: json['contactPerson'] as String?,
+      contactPhone: json['contactPhone'] as String?,
+      contactEmail: json['contactEmail'] as String?,
+      relatedEvents: (json['relatedEvents'] as List?)?.cast<String>(),
+      statistics: json['statistics'] as Map<String, dynamic>?,
+    );
+  }
 
-  Map<String, dynamic> toJson() => _$GroupEventToJson(this);
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'type': type.name,
+      'status': status.name,
+      'severity': severity.name,
+      'location': location.toJson(),
+      'address': address,
+      'affectedRadius': affectedRadius,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'startTime': startTime?.toIso8601String(),
+      'endTime': endTime?.toIso8601String(),
+      'createdBy': createdBy,
+      'assignedOperators': assignedOperators,
+      'emergencyRequestIds': emergencyRequestIds,
+      'missionIds': missionIds,
+      'affectedAreas': affectedAreas,
+      'estimatedAffectedPeople': estimatedAffectedPeople,
+      'metadata': metadata,
+      'updates': updates.map((e) => e.toJson()).toList(),
+      'resources': resources,
+      'weatherCondition': weatherCondition,
+      'isActive': isActive,
+      'priority': priority.name,
+      'coordinatingAgency': coordinatingAgency,
+      'contactPerson': contactPerson,
+      'contactPhone': contactPhone,
+      'contactEmail': contactEmail,
+      'relatedEvents': relatedEvents,
+      'statistics': statistics,
+    };
+  }
 
   GroupEvent copyWith({
     String? id,
@@ -219,7 +292,6 @@ class GroupEvent {
   }
 }
 
-@JsonSerializable()
 class EventUpdate {
   final String id;
   final String eventId;
@@ -227,7 +299,7 @@ class EventUpdate {
   final String message;
   final EventStatus? newStatus;
   final DateTime timestamp;
-  final Location? location;
+  final LocationData? location;
   final Map<String, dynamic>? data;
   final List<String> attachments;
 
@@ -245,10 +317,39 @@ class EventUpdate {
        timestamp = timestamp ?? DateTime.now(),
        attachments = attachments ?? [];
 
-  factory EventUpdate.fromJson(Map<String, dynamic> json) =>
-      _$EventUpdateFromJson(json);
+  factory EventUpdate.fromJson(Map<String, dynamic> json) {
+    return EventUpdate(
+      id: json['id'] as String?,
+      eventId: json['eventId'] as String,
+      updatedBy: json['updatedBy'] as String,
+      message: json['message'] as String,
+      newStatus: json['newStatus'] != null
+          ? EventStatus.values.firstWhere((e) => e.name == json['newStatus'])
+          : null,
+      timestamp: json['timestamp'] != null
+          ? DateTime.parse(json['timestamp'] as String)
+          : null,
+      location: json['location'] != null
+          ? LocationData.fromJson(json['location'] as Map<String, dynamic>)
+          : null,
+      data: json['data'] as Map<String, dynamic>?,
+      attachments: (json['attachments'] as List?)?.cast<String>(),
+    );
+  }
 
-  Map<String, dynamic> toJson() => _$EventUpdateToJson(this);
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'eventId': eventId,
+      'updatedBy': updatedBy,
+      'message': message,
+      'newStatus': newStatus?.name,
+      'timestamp': timestamp.toIso8601String(),
+      'location': location?.toJson(),
+      'data': data,
+      'attachments': attachments,
+    };
+  }
 
   @override
   String toString() {
@@ -257,45 +358,25 @@ class EventUpdate {
 }
 
 enum EventType {
-  @JsonValue('natural_disaster')
   naturalDisaster,
-  @JsonValue('fire_incident')
   fireIncident,
-  @JsonValue('flood')
   flood,
-  @JsonValue('earthquake')
   earthquake,
-  @JsonValue('hurricane')
   hurricane,
-  @JsonValue('tornado')
   tornado,
-  @JsonValue('landslide')
   landslide,
-  @JsonValue('tsunami')
   tsunami,
-  @JsonValue('volcanic_eruption')
   volcanicEruption,
-  @JsonValue('industrial_accident')
   industrialAccident,
-  @JsonValue('chemical_spill')
   chemicalSpill,
-  @JsonValue('building_collapse')
   buildingCollapse,
-  @JsonValue('mass_casualty')
   massCasualty,
-  @JsonValue('pandemic_outbreak')
   pandemicOutbreak,
-  @JsonValue('terrorist_attack')
   terroristAttack,
-  @JsonValue('civil_unrest')
   civilUnrest,
-  @JsonValue('cyber_attack')
   cyberAttack,
-  @JsonValue('power_grid_failure')
   powerGridFailure,
-  @JsonValue('transportation_accident')
   transportationAccident,
-  @JsonValue('other')
   other,
 }
 
@@ -414,18 +495,7 @@ extension EventTypeExtension on EventType {
   }
 }
 
-enum EventStatus {
-  @JsonValue('active')
-  active,
-  @JsonValue('in_progress')
-  inProgress,
-  @JsonValue('resolved')
-  resolved,
-  @JsonValue('closed')
-  closed,
-  @JsonValue('cancelled')
-  cancelled,
-}
+enum EventStatus { active, inProgress, resolved, closed, cancelled }
 
 extension EventStatusExtension on EventStatus {
   String get displayName {
@@ -459,16 +529,7 @@ extension EventStatusExtension on EventStatus {
   }
 }
 
-enum EventSeverity {
-  @JsonValue('minor')
-  minor,
-  @JsonValue('moderate')
-  moderate,
-  @JsonValue('major')
-  major,
-  @JsonValue('critical')
-  critical,
-}
+enum EventSeverity { minor, moderate, major, critical }
 
 extension EventSeverityExtension on EventSeverity {
   String get displayName {
@@ -511,16 +572,7 @@ extension EventSeverityExtension on EventSeverity {
   }
 }
 
-enum EventPriority {
-  @JsonValue('low')
-  low,
-  @JsonValue('medium')
-  medium,
-  @JsonValue('high')
-  high,
-  @JsonValue('critical')
-  critical,
-}
+enum EventPriority { low, medium, high, critical }
 
 extension EventPriorityExtension on EventPriority {
   String get displayName {

@@ -1,75 +1,88 @@
-import 'package:json_annotation/json_annotation.dart';
 import 'package:uuid/uuid.dart';
 
-part 'user.g.dart';
+// LocationData alias for compatibility
+typedef LocationData = Location;
 
-@JsonSerializable()
 class User {
   final String id;
-  final String firstName;
-  final String lastName;
+  final String name;
   final String email;
-  final String phoneNumber;
-  final String address;
-  final UserType userType;
+  final String phone;
+  final LocationData location;
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isActive;
   final String? profileImageUrl;
-  final Location? lastKnownLocation;
 
   User({
     String? id,
-    required this.firstName,
-    required this.lastName,
+    required this.name,
     required this.email,
-    required this.phoneNumber,
-    required this.address,
-    required this.userType,
+    required this.phone,
+    required this.location,
     DateTime? createdAt,
     DateTime? updatedAt,
     this.isActive = true,
     this.profileImageUrl,
-    this.lastKnownLocation,
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
 
-  String get fullName => '$firstName $lastName';
+  String get displayName => name.isNotEmpty ? name : email;
 
-  String get displayName => fullName.isNotEmpty ? fullName : email;
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'] as String?,
+      name: json['name'] as String,
+      email: json['email'] as String,
+      phone: json['phone'] as String,
+      location: LocationData.fromJson(json['location'] as Map<String, dynamic>),
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : null,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
+      isActive: json['isActive'] as bool? ?? true,
+      profileImageUrl: json['profileImageUrl'] as String?,
+    );
+  }
 
-  factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
-
-  Map<String, dynamic> toJson() => _$UserToJson(this);
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'location': location.toJson(),
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'isActive': isActive,
+      'profileImageUrl': profileImageUrl,
+    };
+  }
 
   User copyWith({
     String? id,
-    String? firstName,
-    String? lastName,
+    String? name,
     String? email,
-    String? phoneNumber,
-    String? address,
-    UserType? userType,
+    String? phone,
+    LocationData? location,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isActive,
     String? profileImageUrl,
-    Location? lastKnownLocation,
   }) {
     return User(
       id: id ?? this.id,
-      firstName: firstName ?? this.firstName,
-      lastName: lastName ?? this.lastName,
+      name: name ?? this.name,
       email: email ?? this.email,
-      phoneNumber: phoneNumber ?? this.phoneNumber,
-      address: address ?? this.address,
-      userType: userType ?? this.userType,
+      phone: phone ?? this.phone,
+      location: location ?? this.location,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isActive: isActive ?? this.isActive,
       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
-      lastKnownLocation: lastKnownLocation ?? this.lastKnownLocation,
     );
   }
 
@@ -86,11 +99,10 @@ class User {
 
   @override
   String toString() {
-    return 'User{id: $id, fullName: $fullName, email: $email, userType: $userType}';
+    return 'User{id: $id, name: $name, email: $email}';
   }
 }
 
-@JsonSerializable()
 class Location {
   final double latitude;
   final double longitude;
@@ -106,10 +118,27 @@ class Location {
     this.accuracy,
   }) : timestamp = timestamp ?? DateTime.now();
 
-  factory Location.fromJson(Map<String, dynamic> json) =>
-      _$LocationFromJson(json);
+  factory Location.fromJson(Map<String, dynamic> json) {
+    return Location(
+      latitude: (json['latitude'] as num).toDouble(),
+      longitude: (json['longitude'] as num).toDouble(),
+      address: json['address'] as String?,
+      timestamp: json['timestamp'] != null
+          ? DateTime.parse(json['timestamp'] as String)
+          : null,
+      accuracy: (json['accuracy'] as num?)?.toDouble(),
+    );
+  }
 
-  Map<String, dynamic> toJson() => _$LocationToJson(this);
+  Map<String, dynamic> toJson() {
+    return {
+      'latitude': latitude,
+      'longitude': longitude,
+      'address': address,
+      'timestamp': timestamp.toIso8601String(),
+      'accuracy': accuracy,
+    };
+  }
 
   Location copyWith({
     double? latitude,
@@ -144,12 +173,7 @@ class Location {
   }
 }
 
-enum UserType {
-  @JsonValue('help_seeker')
-  helpSeeker,
-  @JsonValue('gcs_operator')
-  gcsOperator,
-}
+enum UserType { helpSeeker, gcsOperator }
 
 extension UserTypeExtension on UserType {
   String get displayName {
