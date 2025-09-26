@@ -1,377 +1,618 @@
-import 'dart:async';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
-import '../models/drone.dart';
-import '../models/user.dart';
-import '../services/mock_data_service.dart';
+import 'package:latlong2/latlong.dart';
+import 'dart:math';
 import 'location_provider.dart';
 
 class DroneTrackingProvider extends ChangeNotifier {
   final LocationProvider _locationProvider;
-  final MockDataService _mockDataService = MockDataService();
-
-  List<Drone> _allDrones = [];
-  List<Drone> _nearbyDrones = [];
-  List<Drone> _dronesInGeofence = [];
-  Map<String, DroneMovementData> _droneMovements = {};
-  Timer? _trackingTimer;
-  bool _isTracking = false;
-  String? _error;
-
-  // Geofence settings
-  static const double _geofenceRadius = 1000.0; // 1km in meters
-  static const Duration _updateInterval = Duration(seconds: 2);
 
   DroneTrackingProvider(this._locationProvider);
 
-  // Getters
-  List<Drone> get allDrones => _allDrones;
-  List<Drone> get nearbyDrones => _nearbyDrones;
-  List<Drone> get dronesInGeofence => _dronesInGeofence;
-  bool get isTracking => _isTracking;
-  String? get error => _error;
-  double get geofenceRadius => _geofenceRadius;
+  // Drone tracking state
+  List<DroneInfo> _activeDrones = [];
+  List<DroneInfo> get activeDrones => _activeDrones;
 
-  Future<void> startTracking() async {
-    if (_isTracking) return;
+  bool _isTrackingActive = false;
+  bool get isTrackingActive => _isTrackingActive;
 
+  String? _selectedDroneId;
+  String? get selectedDroneId => _selectedDroneId;
+
+  DroneInfo? get selectedDrone {
+    if (_selectedDroneId == null) return null;
     try {
-      _isTracking = true;
-      _error = null;
-
-      // Load initial drone data
-      await _loadDrones();
-
-      // Start tracking timer
-      _trackingTimer = Timer.periodic(_updateInterval, (timer) {
-        _updateDronePositions();
-        _updateGeofenceDrones();
-      });
-
-      notifyListeners();
+      return _activeDrones.firstWhere((drone) => drone.id == _selectedDroneId);
     } catch (e) {
-      _error = 'Failed to start drone tracking: $e';
-      _isTracking = false;
-      notifyListeners();
+      return null;
     }
   }
 
+  // Mission tracking
+  Map<String, List<LatLng>> _flightPaths = {};
+  Map<String, List<LatLng>> get flightPaths => _flightPaths;
+
+  // Real-time updates simulation
+  bool _isSimulatingMovement = false;
+  bool get isSimulatingMovement => _isSimulatingMovement;
+
+  // Additional tracking state for help seeker dashboard
+  bool _isTracking = false;
+  bool get isTracking => _isTracking;
+
+  List<DroneInfo> _nearbyDrones = [];
+  List<DroneInfo> get nearbyDrones => _nearbyDrones;
+
+  List<DroneInfo> _dronesInGeofence = [];
+  List<DroneInfo> get dronesInGeofence => _dronesInGeofence;
+
+  /// Initialize drone tracking with mock data
+  void initializeDroneTracking() {
+    _loadMockDrones();
+    _isTrackingActive = true;
+    notifyListeners();
+  }
+
+  /// Start tracking for help seeker
+  void startTracking() {
+    _isTracking = true;
+    _updateNearbyDrones();
+    _updateGeofenceDrones();
+    notifyListeners();
+  }
+
+  /// Stop tracking for help seeker
   void stopTracking() {
-    _trackingTimer?.cancel();
-    _trackingTimer = null;
     _isTracking = false;
     notifyListeners();
   }
 
-  Future<void> _loadDrones() async {
-    try {
-      _allDrones = await _mockDataService.getMockDrones();
-
-      // Initialize movement data for each drone
-      for (final drone in _allDrones) {
-        _droneMovements[drone.id] = DroneMovementData(
-          currentLocation: drone.location,
-          targetLocation: _generateRandomTargetLocation(drone.location),
-          speed: _generateRandomSpeed(),
-          lastUpdate: DateTime.now(),
-        );
-      }
-
-      _updateGeofenceDrones();
-    } catch (e) {
-      _error = 'Failed to load drones: $e';
-      rethrow;
-    }
-  }
-
-  void _updateDronePositions() {
-    final now = DateTime.now();
-
-    for (int i = 0; i < _allDrones.length; i++) {
-      final drone = _allDrones[i];
-      final movement = _droneMovements[drone.id];
-
-      if (movement != null) {
-        final newLocation = _calculateNewPosition(movement, now);
-
-        // Update drone with new location
-        _allDrones[i] = drone.copyWith(location: newLocation);
-
-        // Update movement data
-        _droneMovements[drone.id] = movement.copyWith(
-          currentLocation: newLocation,
-          lastUpdate: now,
-        );
-
-        // Check if drone reached target, generate new target
-        if (_isLocationReached(newLocation, movement.targetLocation)) {
-          _droneMovements[drone.id] = movement.copyWith(
-            targetLocation: _generateRandomTargetLocation(newLocation),
-            speed: _generateRandomSpeed(),
-          );
-        }
-      }
-    }
-
+  /// Refresh tracking data
+  void refresh() {
+    _updateNearbyDrones();
     _updateGeofenceDrones();
+    notifyListeners();
   }
 
-  LocationData _calculateNewPosition(DroneMovementData movement, DateTime now) {
-    final timeDiff =
-        now.difference(movement.lastUpdate).inMilliseconds / 1000.0;
-    final distanceToMove = movement.speed * timeDiff; // meters per second
+  /// Load mock drone data
+  void _loadMockDrones() {
+    _activeDrones = [
+      DroneInfo(
+        id: 'DRONE_001',
+        name: 'Rescue Alpha',
+        type: DroneType.rescue,
+        status: DroneStatus.active,
+        position: const LatLng(28.6139, 77.2090), // New Delhi
+        altitude: 120.0,
+        batteryLevel: 85.0,
+        speed: 15.2,
+        assignedMission: 'MISSION_001',
+        lastUpdate: DateTime.now(),
+        serialNumber: 'SN-001234',
+      ),
+      DroneInfo(
+        id: 'DRONE_002',
+        name: 'Survey Beta',
+        type: DroneType.surveillance,
+        status: DroneStatus.active,
+        position: const LatLng(28.6129, 77.2295), // Near India Gate
+        altitude: 95.0,
+        batteryLevel: 72.0,
+        speed: 12.8,
+        assignedMission: 'MISSION_002',
+        lastUpdate: DateTime.now(),
+        serialNumber: 'SN-001235',
+      ),
+      DroneInfo(
+        id: 'DRONE_003',
+        name: 'Medical Gamma',
+        type: DroneType.medical,
+        status: DroneStatus.standby,
+        position: const LatLng(28.5355, 77.3910), // Noida
+        altitude: 0.0,
+        batteryLevel: 95.0,
+        speed: 0.0,
+        assignedMission: null,
+        lastUpdate: DateTime.now(),
+        serialNumber: 'SN-001236',
+      ),
+      DroneInfo(
+        id: 'DRONE_004',
+        name: 'Search Delta',
+        type: DroneType.search,
+        status: DroneStatus.active,
+        position: const LatLng(28.7041, 77.1025), // North Delhi
+        altitude: 150.0,
+        batteryLevel: 58.0,
+        speed: 18.5,
+        assignedMission: 'MISSION_003',
+        lastUpdate: DateTime.now(),
+        serialNumber: 'SN-001237',
+      ),
+    ];
 
-    final currentLat = movement.currentLocation.latitude;
-    final currentLng = movement.currentLocation.longitude;
-    final targetLat = movement.targetLocation.latitude;
-    final targetLng = movement.targetLocation.longitude;
-
-    // Calculate distance to target
-    final distanceToTarget = _calculateDistance(
-      currentLat,
-      currentLng,
-      targetLat,
-      targetLng,
-    );
-
-    if (distanceToTarget <= distanceToMove) {
-      // Reached target
-      return movement.targetLocation;
+    // Initialize flight paths
+    for (var drone in _activeDrones) {
+      _flightPaths[drone.id] = [drone.position];
     }
-
-    // Calculate new position along the path
-    final ratio = distanceToMove / distanceToTarget;
-    final newLat = currentLat + (targetLat - currentLat) * ratio;
-    final newLng = currentLng + (targetLng - currentLng) * ratio;
-
-    return LocationData(
-      latitude: newLat,
-      longitude: newLng,
-      address: 'In Flight',
-      timestamp: now,
-    );
   }
 
-  void _updateGeofenceDrones() {
-    final userLocation = _locationProvider.currentLocation;
-    if (userLocation == null) {
-      _dronesInGeofence = [];
-      _nearbyDrones = [];
-      notifyListeners();
-      return;
+  /// Select a specific drone for detailed tracking
+  void selectDrone(String droneId) {
+    _selectedDroneId = droneId;
+    notifyListeners();
+  }
+
+  /// Clear drone selection
+  void clearSelection() {
+    _selectedDroneId = null;
+    notifyListeners();
+  }
+
+  /// Update drone position (simulated)
+  void updateDronePosition(
+    String droneId,
+    LatLng newPosition, {
+    double? altitude,
+    double? speed,
+    double? batteryLevel,
+  }) {
+    final droneIndex = _activeDrones.indexWhere((d) => d.id == droneId);
+    if (droneIndex == -1) return;
+
+    final drone = _activeDrones[droneIndex];
+    _activeDrones[droneIndex] = drone.copyWith(
+      position: newPosition,
+      altitude: altitude ?? drone.altitude,
+      speed: speed ?? drone.speed,
+      batteryLevel: batteryLevel ?? drone.batteryLevel,
+      lastUpdate: DateTime.now(),
+    );
+
+    // Update flight path
+    if (_flightPaths[droneId] != null) {
+      _flightPaths[droneId]!.add(newPosition);
+      // Keep only last 50 positions to avoid memory issues
+      if (_flightPaths[droneId]!.length > 50) {
+        _flightPaths[droneId] = _flightPaths[droneId]!.sublist(
+          _flightPaths[droneId]!.length - 50,
+        );
+      }
     }
-
-    _dronesInGeofence = _allDrones.where((drone) {
-      final distance = _calculateDistance(
-        userLocation.latitude,
-        userLocation.longitude,
-        drone.location.latitude,
-        drone.location.longitude,
-      );
-      return distance <= _geofenceRadius;
-    }).toList();
-
-    // Sort by distance (closest first)
-    _dronesInGeofence.sort((a, b) {
-      final distanceA = _calculateDistance(
-        userLocation.latitude,
-        userLocation.longitude,
-        a.location.latitude,
-        a.location.longitude,
-      );
-      final distanceB = _calculateDistance(
-        userLocation.latitude,
-        userLocation.longitude,
-        b.location.latitude,
-        b.location.longitude,
-      );
-      return distanceA.compareTo(distanceB);
-    });
-
-    _nearbyDrones = _dronesInGeofence.take(5).toList(); // Top 5 nearest
 
     notifyListeners();
   }
 
-  LocationData _generateRandomTargetLocation(LocationData currentLocation) {
-    final random = Random();
+  /// Start simulating drone movement for demo purposes
+  void startMovementSimulation() {
+    if (_isSimulatingMovement) return;
 
-    // Generate random target within 2km radius
-    final distance = 500 + random.nextDouble() * 1500; // 500m to 2km
-    final bearing = random.nextDouble() * 2 * pi;
+    _isSimulatingMovement = true;
+    _simulateMovement();
+  }
 
-    final newLat =
-        currentLocation.latitude +
-        (distance * cos(bearing)) / 111320; // 1 degree lat = ~111.32km
-    final newLng =
-        currentLocation.longitude +
-        (distance * sin(bearing)) /
-            (111320 * cos(currentLocation.latitude * pi / 180));
+  /// Stop movement simulation
+  void stopMovementSimulation() {
+    _isSimulatingMovement = false;
+    notifyListeners();
+  }
 
-    return LocationData(
-      latitude: newLat,
-      longitude: newLng,
-      address: 'Target Location',
+  /// Simulate realistic drone movement
+  void _simulateMovement() async {
+    while (_isSimulatingMovement) {
+      await Future.delayed(const Duration(seconds: 3));
+
+      for (var drone in _activeDrones) {
+        if (drone.status == DroneStatus.active) {
+          // Simulate small movement (realistic drone patrol)
+          final random = DateTime.now().millisecondsSinceEpoch % 100;
+          final latOffset = (random % 20 - 10) * 0.001; // Small lat change
+          final lngOffset =
+              ((random * 7) % 20 - 10) * 0.001; // Small lng change
+
+          final newPosition = LatLng(
+            drone.position.latitude + latOffset,
+            drone.position.longitude + lngOffset,
+          );
+
+          // Simulate battery drain
+          final newBattery = (drone.batteryLevel - 0.1).clamp(0.0, 100.0);
+
+          // Simulate speed variation
+          final newSpeed = drone.speed + (random % 6 - 3) * 0.5;
+
+          updateDronePosition(
+            drone.id,
+            newPosition,
+            batteryLevel: newBattery,
+            speed: newSpeed.clamp(0.0, 25.0),
+          );
+        }
+      }
+    }
+  }
+
+  /// Add new drone to tracking
+  void addDrone(DroneInfo drone) {
+    _activeDrones.add(drone);
+    _flightPaths[drone.id] = [drone.position];
+    notifyListeners();
+  }
+
+  /// Remove drone from tracking
+  void removeDrone(String droneId) {
+    _activeDrones.removeWhere((drone) => drone.id == droneId);
+    _flightPaths.remove(droneId);
+
+    if (_selectedDroneId == droneId) {
+      _selectedDroneId = null;
+    }
+
+    notifyListeners();
+  }
+
+  /// Update drone status
+  void updateDroneStatus(String droneId, DroneStatus newStatus) {
+    final droneIndex = _activeDrones.indexWhere((d) => d.id == droneId);
+    if (droneIndex == -1) return;
+
+    final drone = _activeDrones[droneIndex];
+    _activeDrones[droneIndex] = drone.copyWith(
+      status: newStatus,
+      lastUpdate: DateTime.now(),
     );
+
+    notifyListeners();
   }
 
-  double _generateRandomSpeed() {
-    final random = Random();
-    return 15.0 + random.nextDouble() * 15.0; // 15-30 m/s (54-108 km/h)
+  /// Get drones by mission ID
+  List<DroneInfo> getDronesByMission(String missionId) {
+    return _activeDrones
+        .where((drone) => drone.assignedMission == missionId)
+        .toList();
   }
 
-  bool _isLocationReached(LocationData current, LocationData target) {
+  /// Get drones by type
+  List<DroneInfo> getDronesByType(DroneType type) {
+    return _activeDrones.where((drone) => drone.type == type).toList();
+  }
+
+  /// Get available drones (not assigned to missions)
+  List<DroneInfo> getAvailableDrones() {
+    return _activeDrones
+        .where(
+          (drone) =>
+              drone.assignedMission == null &&
+              drone.status != DroneStatus.maintenance &&
+              drone.batteryLevel > 20.0,
+        )
+        .toList();
+  }
+
+  /// Assign drone to mission
+  void assignDroneToMission(String droneId, String missionId) {
+    final droneIndex = _activeDrones.indexWhere((d) => d.id == droneId);
+    if (droneIndex == -1) return;
+
+    final drone = _activeDrones[droneIndex];
+    _activeDrones[droneIndex] = drone.copyWith(
+      assignedMission: missionId,
+      status: DroneStatus.active,
+      lastUpdate: DateTime.now(),
+    );
+
+    notifyListeners();
+  }
+
+  /// Unassign drone from mission
+  void unassignDroneFromMission(String droneId) {
+    final droneIndex = _activeDrones.indexWhere((d) => d.id == droneId);
+    if (droneIndex == -1) return;
+
+    final drone = _activeDrones[droneIndex];
+    _activeDrones[droneIndex] = drone.copyWith(
+      assignedMission: null,
+      status: DroneStatus.standby,
+      lastUpdate: DateTime.now(),
+    );
+
+    notifyListeners();
+  }
+
+  /// Get flight path for specific drone
+  List<LatLng> getDroneFlightPath(String droneId) {
+    return _flightPaths[droneId] ?? [];
+  }
+
+  /// Clear flight path for drone
+  void clearDroneFlightPath(String droneId) {
+    _flightPaths[droneId] = [];
+    notifyListeners();
+  }
+
+  /// Update nearby drones based on user location
+  void _updateNearbyDrones() {
+    // Simulate nearby drones calculation
+    _nearbyDrones = _activeDrones
+        .where((drone) {
+          // Simple distance check - in real app would use proper geolocation
+          return drone.status == DroneStatus.active;
+        })
+        .take(3)
+        .toList();
+  }
+
+  /// Update drones in geofence
+  void _updateGeofenceDrones() {
+    // Simulate geofence check
+    _dronesInGeofence = _activeDrones
+        .where((drone) {
+          return drone.status == DroneStatus.active;
+        })
+        .take(2)
+        .toList();
+  }
+
+  /// Get drone tracking information
+  Map<String, dynamic> getDroneTrackingInfo(String droneId) {
+    final drone = _activeDrones.firstWhere(
+      (d) => d.id == droneId,
+      orElse: () => _activeDrones.first,
+    );
+
+    // Calculate distance and ETA if user location is available
+    final userLat = 28.6139; // Default Delhi location
+    final userLng = 77.2090;
     final distance = _calculateDistance(
-      current.latitude,
-      current.longitude,
-      target.latitude,
-      target.longitude,
+      userLat,
+      userLng,
+      drone.position.latitude,
+      drone.position.longitude,
     );
-    return distance < 50; // Within 50 meters
+    final eta = _calculateETA(distance, drone.speed);
+
+    return {
+      'id': drone.id,
+      'name': drone.name,
+      'status': drone.status.displayName,
+      'batteryLevel': drone.batteryLevel,
+      'altitude': drone.altitude,
+      'speed': drone.speed,
+      'lastUpdate': drone.lastUpdate.toIso8601String(),
+      'formattedDistance': '${distance.toStringAsFixed(1)} km',
+      'formattedETA': eta,
+    };
   }
 
+  /// Calculate distance between two points
   double _calculateDistance(
     double lat1,
     double lon1,
     double lat2,
     double lon2,
   ) {
-    const double earthRadius = 6371000; // Earth's radius in meters
-    final double dLat = (lat2 - lat1) * pi / 180;
-    final double dLon = (lon2 - lon1) * pi / 180;
-
+    const double earthRadius = 6371; // km
+    final double dLat = (lat2 - lat1) * (3.14159 / 180);
+    final double dLon = (lon2 - lon1) * (3.14159 / 180);
     final double a =
         sin(dLat / 2) * sin(dLat / 2) +
-        cos(lat1 * pi / 180) *
-            cos(lat2 * pi / 180) *
+        cos(lat1 * (3.14159 / 180)) *
+            cos(lat2 * (3.14159 / 180)) *
             sin(dLon / 2) *
             sin(dLon / 2);
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  /// Calculate ETA
+  String _calculateETA(double distance, double speed) {
+    if (speed <= 0) return 'Unknown';
+    final double timeInHours = distance / speed;
+    final int minutes = (timeInHours * 60).round();
+    if (minutes < 60) {
+      return '${minutes}m';
+    } else {
+      final int hours = minutes ~/ 60;
+      final int remainingMinutes = minutes % 60;
+      return '${hours}h ${remainingMinutes}m';
+    }
+  }
+
+  /// Get distance to user method
+  double getDistanceToUser(LatLng position) {
+    if (_locationProvider.currentLocation == null) return 0.0;
+
+    const double earthRadius = 6371000; // meters
+    final double lat1Rad =
+        _locationProvider.currentLocation!.latitude * 3.14159 / 180;
+    final double lat2Rad = position.latitude * 3.14159 / 180;
+    final double deltaLatRad =
+        (position.latitude - _locationProvider.currentLocation!.latitude) *
+        3.14159 /
+        180;
+    final double deltaLngRad =
+        (position.longitude - _locationProvider.currentLocation!.longitude) *
+        3.14159 /
+        180;
+
+    final double a =
+        sin(deltaLatRad / 2) * sin(deltaLatRad / 2) +
+        cos(lat1Rad) *
+            cos(lat2Rad) *
+            sin(deltaLngRad / 2) *
+            sin(deltaLngRad / 2);
     final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
     return earthRadius * c;
   }
 
-  double getDistanceToUser(Drone drone) {
-    final userLocation = _locationProvider.currentLocation;
-    if (userLocation == null) return double.infinity;
+  /// Get geofence radius
+  double get geofenceRadius => 1000.0; // 1km default
 
-    return _calculateDistance(
-      userLocation.latitude,
-      userLocation.longitude,
-      drone.location.latitude,
-      drone.location.longitude,
-    );
-  }
+  /// Get all drones
+  List<DroneInfo> get allDrones => _activeDrones;
 
-  Duration getEstimatedTimeOfArrival(Drone drone) {
-    final distance = getDistanceToUser(drone);
-    final movement = _droneMovements[drone.id];
-    final speed = movement?.speed ?? 20.0; // Default speed
-
-    final timeInSeconds = distance / speed;
-    return Duration(seconds: timeInSeconds.round());
-  }
-
-  String getFormattedDistance(double distanceInMeters) {
-    if (distanceInMeters < 1000) {
-      return '${distanceInMeters.round()} m';
-    } else {
-      return '${(distanceInMeters / 1000).toStringAsFixed(1)} km';
-    }
-  }
-
-  String getFormattedETA(Duration eta) {
-    if (eta.inMinutes < 1) {
-      return '${eta.inSeconds}s';
-    } else if (eta.inHours < 1) {
-      return '${eta.inMinutes}m ${eta.inSeconds % 60}s';
-    } else {
-      return '${eta.inHours}h ${eta.inMinutes % 60}m';
-    }
-  }
-
-  // Get drone details with calculated metrics
-  DroneTrackingInfo getDroneTrackingInfo(Drone drone) {
-    return DroneTrackingInfo(
-      drone: drone,
-      distanceToUser: getDistanceToUser(drone),
-      estimatedTimeOfArrival: getEstimatedTimeOfArrival(drone),
-      isInGeofence: _dronesInGeofence.contains(drone),
-      movement: _droneMovements[drone.id],
-    );
-  }
-
-  Future<void> refresh() async {
-    if (_isTracking) {
-      await _loadDrones();
-    }
-  }
-
+  /// Dispose resources
   @override
   void dispose() {
-    stopTracking();
+    _isSimulatingMovement = false;
     super.dispose();
   }
 }
 
-class DroneMovementData {
-  final LocationData currentLocation;
-  final LocationData targetLocation;
-  final double speed; // meters per second
+// Drone Information Model
+class DroneInfo {
+  final String id;
+  final String name;
+  final DroneType type;
+  final DroneStatus status;
+  final LatLng position;
+  final double altitude; // in meters
+  final double batteryLevel; // percentage
+  final double speed; // km/h
+  final String? assignedMission;
   final DateTime lastUpdate;
+  final String serialNumber;
 
-  DroneMovementData({
-    required this.currentLocation,
-    required this.targetLocation,
+  const DroneInfo({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.status,
+    required this.position,
+    required this.altitude,
+    required this.batteryLevel,
     required this.speed,
+    this.assignedMission,
     required this.lastUpdate,
-  });
+    String? serialNumber,
+  }) : serialNumber = serialNumber ?? 'SN-000000';
 
-  DroneMovementData copyWith({
-    LocationData? currentLocation,
-    LocationData? targetLocation,
+  DroneInfo copyWith({
+    String? id,
+    String? name,
+    DroneType? type,
+    DroneStatus? status,
+    LatLng? position,
+    double? altitude,
+    double? batteryLevel,
     double? speed,
+    String? assignedMission,
     DateTime? lastUpdate,
+    String? serialNumber,
   }) {
-    return DroneMovementData(
-      currentLocation: currentLocation ?? this.currentLocation,
-      targetLocation: targetLocation ?? this.targetLocation,
+    return DroneInfo(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      status: status ?? this.status,
+      position: position ?? this.position,
+      altitude: altitude ?? this.altitude,
+      batteryLevel: batteryLevel ?? this.batteryLevel,
       speed: speed ?? this.speed,
+      assignedMission: assignedMission ?? this.assignedMission,
       lastUpdate: lastUpdate ?? this.lastUpdate,
+      serialNumber: serialNumber ?? this.serialNumber,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'type': type.name,
+      'status': status.name,
+      'position': {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+      },
+      'altitude': altitude,
+      'batteryLevel': batteryLevel,
+      'speed': speed,
+      'assignedMission': assignedMission,
+      'lastUpdate': lastUpdate.toIso8601String(),
+    };
   }
 }
 
-class DroneTrackingInfo {
-  final Drone drone;
-  final double distanceToUser;
-  final Duration estimatedTimeOfArrival;
-  final bool isInGeofence;
-  final DroneMovementData? movement;
+// Drone Type Enumeration
+enum DroneType {
+  rescue,
+  surveillance,
+  medical,
+  search,
+  delivery,
+  reconnaissance,
+}
 
-  DroneTrackingInfo({
-    required this.drone,
-    required this.distanceToUser,
-    required this.estimatedTimeOfArrival,
-    required this.isInGeofence,
-    this.movement,
-  });
-
-  String get formattedDistance {
-    if (distanceToUser < 1000) {
-      return '${distanceToUser.round()} m';
-    } else {
-      return '${(distanceToUser / 1000).toStringAsFixed(1)} km';
+extension DroneTypeExtension on DroneType {
+  String get displayName {
+    switch (this) {
+      case DroneType.rescue:
+        return 'Rescue';
+      case DroneType.surveillance:
+        return 'Surveillance';
+      case DroneType.medical:
+        return 'Medical';
+      case DroneType.search:
+        return 'Search & Rescue';
+      case DroneType.delivery:
+        return 'Delivery';
+      case DroneType.reconnaissance:
+        return 'Reconnaissance';
     }
   }
 
-  String get formattedETA {
-    if (estimatedTimeOfArrival.inMinutes < 1) {
-      return '${estimatedTimeOfArrival.inSeconds}s';
-    } else if (estimatedTimeOfArrival.inHours < 1) {
-      return '${estimatedTimeOfArrival.inMinutes}m';
-    } else {
-      return '${estimatedTimeOfArrival.inHours}h ${estimatedTimeOfArrival.inMinutes % 60}m';
+  String get icon {
+    switch (this) {
+      case DroneType.rescue:
+        return '🚁';
+      case DroneType.surveillance:
+        return '📹';
+      case DroneType.medical:
+        return '🏥';
+      case DroneType.search:
+        return '🔍';
+      case DroneType.delivery:
+        return '📦';
+      case DroneType.reconnaissance:
+        return '🛰️';
     }
   }
+}
+
+// Drone Status Enumeration
+enum DroneStatus { active, standby, maintenance, charging, offline }
+
+extension DroneStatusExtension on DroneStatus {
+  String get displayName {
+    switch (this) {
+      case DroneStatus.active:
+        return 'Active';
+      case DroneStatus.standby:
+        return 'Standby';
+      case DroneStatus.maintenance:
+        return 'Maintenance';
+      case DroneStatus.charging:
+        return 'Charging';
+      case DroneStatus.offline:
+        return 'Offline';
+    }
+  }
+
+  bool get isAvailable {
+    return this == DroneStatus.active || this == DroneStatus.standby;
+  }
+}
+
+extension DroneInfoExtension on DroneInfo {
+  bool get isAvailable => status.isAvailable;
+  bool get isDeployed => assignedMission != null;
+}
+
+// Add missing getters directly to DroneInfo class
+extension DroneInfoHelpers on DroneInfo {
+  bool get isOperational => status == DroneStatus.active;
+  bool get needsMaintenance => batteryLevel < 20.0;
+  String get statusDisplayName => status.displayName;
+  String get typeDisplayName => type.displayName;
 }

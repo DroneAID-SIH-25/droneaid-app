@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod;
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'core/constants/app_strings.dart';
@@ -12,8 +11,8 @@ import 'providers/emergency_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/group_management_provider.dart';
 import 'providers/ongoing_missions_provider.dart';
-
 import 'providers/mission_provider.dart';
+import 'providers/map_provider.dart';
 import 'routes/app_router.dart';
 
 void main() async {
@@ -38,7 +37,7 @@ void main() async {
     ),
   );
 
-  runApp(riverpod.ProviderScope(child: const DroneAidApp()));
+  runApp(const DroneAidApp());
 }
 
 class DroneAidApp extends StatelessWidget {
@@ -54,6 +53,7 @@ class DroneAidApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MissionProvider()),
         ChangeNotifierProvider(create: (_) => GroupManagementProvider()),
         ChangeNotifierProvider(create: (_) => OngoingMissionsProvider()),
+        ChangeNotifierProvider(create: (_) => MapProvider()),
 
         // Dependent providers
         ChangeNotifierProxyProvider<LocationProvider, DroneTrackingProvider>(
@@ -199,7 +199,7 @@ class _AppInitializerState extends State<AppInitializer> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 20,
                           offset: const Offset(0, 8),
                         ),
@@ -208,10 +208,10 @@ class _AppInitializerState extends State<AppInitializer> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.flight,
                           size: 70,
-                          color: const Color(0xFF1976D2),
+                          color: Color(0xFF1976D2),
                         ),
                         Positioned(
                           bottom: 20,

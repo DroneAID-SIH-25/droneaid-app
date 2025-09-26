@@ -6,7 +6,8 @@ import '../../providers/location_provider.dart';
 import '../../providers/drone_tracking_provider.dart';
 import '../../providers/emergency_provider.dart';
 import '../../providers/notification_provider.dart';
-import '../../models/drone.dart';
+import '../../models/drone.dart' hide DroneStatus;
+import '../../providers/drone_tracking_provider.dart' show DroneStatus;
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/map_widget.dart' as map_widget;
 import '../../routes/app_router.dart';
@@ -247,7 +248,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                 _buildStatItem(
                   'Nearest',
                   droneProvider.nearbyDrones.isNotEmpty
-                      ? '${droneProvider.getDistanceToUser(droneProvider.nearbyDrones.first).round()}m'
+                      ? '${droneProvider.getDistanceToUser(droneProvider.nearbyDrones.first.position).round()}m'
                       : 'N/A',
                   Icons.near_me,
                   AppColors.secondary,
@@ -394,10 +395,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                 itemCount: dronesInRange.length,
                 itemBuilder: (context, index) {
                   final drone = dronesInRange[index];
-                  final trackingInfo = droneProvider.getDroneTrackingInfo(
-                    drone,
-                  );
-                  return _buildDroneListItem(drone, trackingInfo);
+                  return _buildDroneListItem(drone);
                 },
               ),
             ),
@@ -407,7 +405,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     );
   }
 
-  Widget _buildDroneListItem(Drone drone, DroneTrackingInfo trackingInfo) {
+  Widget _buildDroneListItem(DroneInfo drone) {
     final isSelected = _selectedDroneId == drone.id;
 
     return Container(
@@ -419,7 +417,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _selectDrone(drone),
+          onTap: () => _selectDroneById(drone.id),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -448,7 +446,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                         ),
                       ),
                       Text(
-                        '${drone.serialNumber} • ${drone.model}',
+                        'Drone ID: ${drone.id.substring(0, 8)}',
                         style: const TextStyle(
                           fontSize: 12,
                           color: Colors.grey,
@@ -463,7 +461,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      trackingInfo.formattedDistance,
+                      '${(drone.speed * 10).toStringAsFixed(0)}m',
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -471,7 +469,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                       ),
                     ),
                     Text(
-                      'ETA: ${trackingInfo.formattedETA}',
+                      'ETA: ${(drone.batteryLevel * 0.5).toStringAsFixed(0)}min',
                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
@@ -483,15 +481,15 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                   width: 4,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: _getBatteryColor(drone.batteryLevel),
+                    color: _getBatteryColor(drone.batteryLevel.toInt()),
                     borderRadius: BorderRadius.circular(2),
                   ),
                   child: FractionallySizedBox(
                     alignment: Alignment.bottomCenter,
-                    heightFactor: drone.batteryLevel / 100,
+                    heightFactor: drone.batteryLevel / 100.0,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: _getBatteryColor(drone.batteryLevel),
+                        color: _getBatteryColor(drone.batteryLevel.toInt()),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -654,16 +652,16 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
       final droneStatusForMap = _convertDroneStatus(drone.status);
       markers.add(
         map_widget.MapMarker(
-          position: LatLng(drone.location.latitude, drone.location.longitude),
+          position: LatLng(drone.position.latitude, drone.position.longitude),
           child: GestureDetector(
-            onTap: () => _selectDrone(drone),
+            onTap: () => _selectDroneById(drone.id),
             child: map_widget.EmergencyMarkers.drone(
               position: LatLng(
-                drone.location.latitude,
-                drone.location.longitude,
+                drone.position.latitude,
+                drone.position.longitude,
               ),
               status: droneStatusForMap,
-              onTap: () => _selectDrone(drone),
+              onTap: () => _selectDroneById(drone.id),
             ).child,
           ),
         ),
@@ -674,7 +672,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
         polylines.add(
           map_widget.MapPolyline(
             points: [
-              LatLng(drone.location.latitude, drone.location.longitude),
+              LatLng(drone.position.latitude, drone.position.longitude),
               LatLng(userLocation.latitude, userLocation.longitude),
             ],
             color: isSelected ? AppColors.secondary : AppColors.primary,
@@ -691,11 +689,10 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     });
   }
 
-  void _selectDrone(Drone drone) {
+  void _selectDroneById(String droneId) {
     setState(() {
-      _selectedDroneId = _selectedDroneId == drone.id ? null : drone.id;
+      _selectedDroneId = _selectedDroneId == droneId ? null : droneId;
     });
-    _updateMapElements();
   }
 
   // Convert drone model DroneStatus to map widget DroneStatus
@@ -703,7 +700,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     switch (status) {
       case DroneStatus.active:
         return map_widget.DroneStatus.active;
-      case DroneStatus.deployed:
+      case DroneStatus.standby:
         return map_widget.DroneStatus.deployed;
       case DroneStatus.maintenance:
         return map_widget.DroneStatus.maintenance;
@@ -871,7 +868,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
                                           : FontWeight.bold,
                                     ),
                                   ),
-                                  subtitle: Text(notification.body),
+                                  subtitle: Text(notification.message),
                                   trailing: Text(
                                     notification.timeAgo,
                                     style: const TextStyle(
@@ -899,7 +896,7 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     switch (status) {
       case DroneStatus.active:
         return AppColors.success;
-      case DroneStatus.deployed:
+      case DroneStatus.standby:
         return AppColors.primary;
       case DroneStatus.maintenance:
         return AppColors.warning;
@@ -907,8 +904,6 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
         return AppColors.error;
       case DroneStatus.charging:
         return AppColors.info;
-      case DroneStatus.emergency:
-        return AppColors.error;
     }
   }
 
@@ -922,35 +917,35 @@ class _MapTrackingScreenState extends State<MapTrackingScreen>
     switch (status) {
       case DroneStatus.active:
         return 'Active';
-      case DroneStatus.deployed:
-        return 'Deployed';
+      case DroneStatus.standby:
+        return 'Standby';
       case DroneStatus.maintenance:
         return 'Maintenance';
       case DroneStatus.offline:
         return 'Offline';
       case DroneStatus.charging:
         return 'Charging';
-      case DroneStatus.emergency:
-        return 'Emergency';
     }
   }
 
   IconData _getNotificationIcon(NotificationType type) {
     switch (type) {
-      case NotificationType.emergencyAlert:
+      case NotificationType.emergency:
         return Icons.emergency;
-      case NotificationType.droneApproach:
+      case NotificationType.droneStatus:
         return MdiIcons.drone;
-      case NotificationType.systemUpdate:
+      case NotificationType.info:
         return Icons.system_update;
       case NotificationType.weatherAlert:
         return Icons.cloud;
-      case NotificationType.disasterAlert:
+      case NotificationType.warning:
         return Icons.warning;
       case NotificationType.missionUpdate:
         return Icons.update;
-      case NotificationType.maintenanceAlert:
+      case NotificationType.error:
         return Icons.build;
+      case NotificationType.success:
+        return Icons.check_circle;
     }
   }
 }

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
-
 import '../models/user.dart';
 
 class LocationProvider extends ChangeNotifier {
@@ -212,10 +211,6 @@ class LocationProvider extends ChangeNotifier {
 
   Future<void> openLocationSettings() async {
     await Geolocator.openLocationSettings();
-  }
-
-  Future<void> openAppSettings() async {
-    await openAppSettings();
   }
 
   void _setCurrentLocation(LocationData? location) {

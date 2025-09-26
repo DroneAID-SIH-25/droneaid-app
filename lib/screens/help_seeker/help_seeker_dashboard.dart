@@ -437,7 +437,9 @@ class _HelpSeekerDashboardState extends State<HelpSeekerDashboard>
                     itemCount: provider.nearbyDrones.length,
                     itemBuilder: (context, index) {
                       final drone = provider.nearbyDrones[index];
-                      final trackingInfo = provider.getDroneTrackingInfo(drone);
+                      final trackingInfo = provider.getDroneTrackingInfo(
+                        drone.id,
+                      );
                       return Container(
                         width: 200,
                         margin: const EdgeInsets.only(right: 12),
@@ -486,7 +488,7 @@ class _HelpSeekerDashboardState extends State<HelpSeekerDashboard>
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  trackingInfo.formattedDistance,
+                                  trackingInfo['formattedDistance'],
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: AppColors.primary,
@@ -494,7 +496,7 @@ class _HelpSeekerDashboardState extends State<HelpSeekerDashboard>
                                   ),
                                 ),
                                 Text(
-                                  'ETA: ${trackingInfo.formattedETA}',
+                                  'ETA: ${trackingInfo['formattedETA']}',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: AppColors.textSecondary,
@@ -946,10 +948,11 @@ class _HelpSeekerDashboardState extends State<HelpSeekerDashboard>
     final droneProvider = context.read<DroneTrackingProvider>();
     final emergencyProvider = context.read<EmergencyProvider>();
 
+    // Refresh providers individually since they may not all return futures
     await Future.wait([
-      locationProvider.refreshLocation(),
-      droneProvider.refresh(),
-      emergencyProvider.refresh(),
+      Future.microtask(() => locationProvider.getCurrentLocation()),
+      Future.microtask(() => droneProvider.refresh()),
+      Future.microtask(() => emergencyProvider.refresh()),
     ]);
   }
 
@@ -1049,7 +1052,7 @@ class _HelpSeekerDashboardState extends State<HelpSeekerDashboard>
                                           : FontWeight.bold,
                                     ),
                                   ),
-                                  subtitle: Text(notification.body),
+                                  subtitle: Text(notification.message),
                                   trailing: Text(
                                     notification.timeAgo,
                                     style: const TextStyle(

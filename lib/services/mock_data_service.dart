@@ -1,6 +1,8 @@
 import 'dart:math';
 import '../models/drone.dart';
 import '../models/emergency_request.dart';
+import '../models/mission.dart';
+import '../models/gcs_station.dart';
 import '../models/user.dart';
 import '../providers/notification_provider.dart';
 
@@ -348,7 +350,7 @@ class MockDataService {
       final notification = AppNotification(
         id: 'notification_$i',
         title: _getNotificationTitle(type),
-        body: _getNotificationBody(type),
+        message: _getNotificationBody(type),
         type: type,
         priority: priority,
         timestamp: DateTime.now().subtract(
@@ -370,62 +372,48 @@ class MockDataService {
       AppNotification(
         id: 'disaster_1',
         title: 'Cyclone Warning',
-        body:
+        message:
             'Severe cyclone Biparjoy approaching Gujarat coast. Take immediate shelter.',
-        type: NotificationType.disasterAlert,
-        priority: NotificationPriority.urgent,
+        type: NotificationType.emergency,
+        priority: NotificationPriority.critical,
         timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        location: LocationData(
-          latitude: 23.0225,
-          longitude: 72.5714,
-          address: 'Gujarat',
-        ),
       ),
       AppNotification(
         id: 'disaster_2',
         title: 'Flood Warning',
-        body:
+        message:
             'Heavy rainfall causing flood-like situation in Kerala. Stay alert.',
-        type: NotificationType.disasterAlert,
+        type: NotificationType.emergency,
         priority: NotificationPriority.high,
         timestamp: DateTime.now().subtract(const Duration(hours: 6)),
-        location: LocationData(
-          latitude: 10.8505,
-          longitude: 76.2711,
-          address: 'Kerala',
-        ),
       ),
       AppNotification(
         id: 'disaster_3',
         title: 'Earthquake Alert',
-        body: 'Mild earthquake of magnitude 4.2 recorded in Himachal Pradesh.',
-        type: NotificationType.disasterAlert,
+        message:
+            'Mild earthquake of magnitude 4.2 recorded in Himachal Pradesh.',
+        type: NotificationType.emergency,
         priority: NotificationPriority.normal,
         timestamp: DateTime.now().subtract(const Duration(days: 1)),
-        location: LocationData(
-          latitude: 31.1048,
-          longitude: 77.1734,
-          address: 'Himachal Pradesh',
-        ),
       ),
     ];
   }
 
   String _getNotificationTitle(NotificationType type) {
     final titles = {
-      NotificationType.emergencyAlert: [
+      NotificationType.emergency: [
         'Emergency Alert',
         'Urgent Response Required',
         'Critical Situation',
         'Emergency Services Active',
       ],
-      NotificationType.droneApproach: [
+      NotificationType.droneStatus: [
         'Drone Approaching',
         'Rescue Drone En Route',
         'Emergency Drone Deployed',
         'Drone ETA Update',
       ],
-      NotificationType.systemUpdate: [
+      NotificationType.info: [
         'System Update',
         'Service Notification',
         'App Update Available',
@@ -437,7 +425,7 @@ class MockDataService {
         'Climate Advisory',
         'Weather Update',
       ],
-      NotificationType.disasterAlert: [
+      NotificationType.warning: [
         'Disaster Alert',
         'Emergency Warning',
         'Natural Disaster',
@@ -449,7 +437,7 @@ class MockDataService {
         'Operation Status',
         'Mission Progress',
       ],
-      NotificationType.maintenanceAlert: [
+      NotificationType.error: [
         'Maintenance Alert',
         'Service Schedule',
         'System Maintenance',
@@ -464,19 +452,19 @@ class MockDataService {
 
   String _getNotificationBody(NotificationType type) {
     final bodies = {
-      NotificationType.emergencyAlert: [
+      NotificationType.emergency: [
         'Emergency services are responding to incidents in your area.',
         'Multiple emergency units deployed nearby.',
         'Stay indoors and follow safety protocols.',
         'Emergency response in progress, avoid the area.',
       ],
-      NotificationType.droneApproach: [
+      NotificationType.droneStatus: [
         'Emergency drone is 500m away from your location.',
         'Rescue drone will arrive in 3 minutes.',
         'Medical supply drone approaching your area.',
         'Search and rescue drone deployed to your location.',
       ],
-      NotificationType.systemUpdate: [
+      NotificationType.info: [
         'New features and improvements are available.',
         'Scheduled maintenance will occur tonight.',
         'System performance enhancements deployed.',
@@ -488,7 +476,7 @@ class MockDataService {
         'Temperature will drop significantly tonight.',
         'Visibility reduced due to fog conditions.',
       ],
-      NotificationType.disasterAlert: [
+      NotificationType.warning: [
         'Natural disaster warning issued for your region.',
         'Evacuation advisory for coastal areas.',
         'Emergency shelters have been set up.',
@@ -500,7 +488,7 @@ class MockDataService {
         'Ground teams are coordinating response.',
         'Mission status has been changed to active.',
       ],
-      NotificationType.maintenanceAlert: [
+      NotificationType.error: [
         'System maintenance scheduled for tonight.',
         'Service may be temporarily unavailable.',
         'Drone fleet undergoing routine maintenance.',
@@ -511,5 +499,220 @@ class MockDataService {
     final typeBodies = bodies[type] ?? ['System notification'];
     final random = Random();
     return typeBodies[random.nextInt(typeBodies.length)];
+  }
+
+  Future<List<Mission>> getMockMissions() async {
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    final random = Random();
+    final List<Mission> missions = [];
+
+    for (int i = 0; i < 10; i++) {
+      final missionType =
+          MissionType.values[random.nextInt(MissionType.values.length)];
+      final status =
+          MissionStatus.values[random.nextInt(MissionStatus.values.length)];
+      final priority =
+          MissionPriority.values[random.nextInt(MissionPriority.values.length)];
+
+      final startLocation =
+          _indiaBaseLocations[random.nextInt(_indiaBaseLocations.length)];
+      final targetLocation =
+          _indiaBaseLocations[random.nextInt(_indiaBaseLocations.length)];
+
+      final mission = Mission(
+        assignedDroneId: 'drone_${random.nextInt(15) + 1}',
+        assignedOperatorId: 'operator_${random.nextInt(5) + 1}',
+        title: _getMissionTitle(missionType),
+        description: _getMissionDescription(missionType),
+        type: missionType,
+        status: status,
+        priority: priority,
+        startLocation: startLocation,
+        targetLocation: targetLocation,
+        waypoints: [],
+        progress: random.nextDouble(),
+        payload: 'Standard Equipment',
+        weatherConditions: 'Clear',
+        fuelLevel: 50.0 + random.nextDouble() * 50.0,
+        batteryLevel: 20.0 + random.nextDouble() * 80.0,
+        altitude: random.nextDouble() * 500,
+        speed: random.nextDouble() * 50,
+        distance: random.nextDouble() * 100,
+        updates: [],
+        equipment: ['Camera', 'GPS', 'Radio'],
+        isRecurring: false,
+      );
+
+      missions.add(mission);
+    }
+
+    return missions;
+  }
+
+  String _getMissionTitle(MissionType type) {
+    final titles = {
+      MissionType.search: [
+        'Search Operation Alpha',
+        'Missing Person Search',
+        'Area Reconnaissance',
+      ],
+      MissionType.rescue: [
+        'Emergency Rescue Mission',
+        'Victim Extraction',
+        'Medical Emergency Response',
+      ],
+      MissionType.delivery: [
+        'Medical Supply Drop',
+        'Emergency Kit Delivery',
+        'Food Aid Distribution',
+      ],
+      MissionType.surveillance: [
+        'Perimeter Surveillance',
+        'Security Monitoring',
+        'Area Assessment',
+      ],
+      MissionType.reconnaissance: [
+        'Intelligence Gathering',
+        'Terrain Mapping',
+        'Threat Assessment',
+      ],
+      MissionType.emergencyResponse: [
+        'Critical Emergency Response',
+        'Disaster Relief',
+        'Urgent Evacuation Support',
+      ],
+    };
+
+    final typeTitles = titles[type] ?? ['Standard Mission'];
+    final random = Random();
+    return typeTitles[random.nextInt(typeTitles.length)];
+  }
+
+  String _getMissionDescription(MissionType type) {
+    final descriptions = {
+      MissionType.search: [
+        'Searching for missing individuals in designated area',
+        'Conducting systematic search pattern',
+        'Locating lost hikers in mountain region',
+      ],
+      MissionType.rescue: [
+        'Extracting injured personnel from danger zone',
+        'Providing emergency medical assistance',
+        'Evacuating civilians from disaster area',
+      ],
+      MissionType.delivery: [
+        'Delivering critical medical supplies to remote location',
+        'Emergency food drop for isolated community',
+        'Transporting emergency equipment',
+      ],
+      MissionType.surveillance: [
+        'Monitoring designated area for security threats',
+        'Conducting routine perimeter surveillance',
+        'Observing suspicious activity',
+      ],
+      MissionType.reconnaissance: [
+        'Gathering intelligence on terrain conditions',
+        'Mapping disaster-affected areas',
+        'Assessing infrastructure damage',
+      ],
+      MissionType.emergencyResponse: [
+        'Responding to critical emergency situation',
+        'Providing immediate disaster relief support',
+        'Coordinating emergency evacuation',
+      ],
+    };
+
+    final typeDescriptions =
+        descriptions[type] ?? ['Standard mission operations'];
+    final random = Random();
+    return typeDescriptions[random.nextInt(typeDescriptions.length)];
+  }
+
+  Future<List<GCSStation>> getMockGCSStations() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    final List<GCSStation> stations = [];
+
+    for (int i = 0; i < 8; i++) {
+      final location = _indiaBaseLocations[i % _indiaBaseLocations.length];
+      final random = Random();
+
+      final station = GCSStation(
+        name: 'GCS Station ${location.address}',
+        code: 'GCS-${(i + 1).toString().padLeft(3, '0')}',
+        location: location.address ?? 'Unknown Location',
+        coordinates: location,
+        organizationId: 'org_india_emergency',
+        contactEmail: 'gcs${i + 1}@emergency.gov.in',
+        contactPhone: '+91${random.nextInt(9000000000) + 1000000000}',
+        status:
+            StationStatus.values[random.nextInt(StationStatus.values.length)],
+        maxCapacity: 5 + random.nextInt(15),
+        currentOperators: random.nextInt(10),
+        type: StationType.values[random.nextInt(StationType.values.length)],
+        isActive: random.nextDouble() > 0.2, // 80% chance of being active
+        description: 'Ground Control Station for ${location.address} region',
+        equipment: {
+          'communication_systems': 'Advanced Radio & Satellite',
+          'radar_systems': 'Long Range Surveillance Radar',
+          'control_stations': '${3 + random.nextInt(5)} operator stations',
+          'backup_power': 'Diesel Generator + UPS',
+        },
+        certifications: ['ISO 9001', 'FAA Part 107', 'DGCA Certified'],
+        operatorIds: List.generate(
+          random.nextInt(5) + 2,
+          (index) => 'operator_${random.nextInt(100)}',
+        ),
+      );
+
+      stations.add(station);
+    }
+
+    return stations;
+  }
+
+  Future<List<EmergencyRequest>> getMockEmergencyRequests() async {
+    await Future.delayed(const Duration(milliseconds: 250));
+
+    final random = Random();
+    final List<EmergencyRequest> requests = [];
+
+    for (int i = 0; i < 6; i++) {
+      final emergencyType =
+          EmergencyType.values[random.nextInt(EmergencyType.values.length)];
+      final status =
+          EmergencyStatus.values[random.nextInt(EmergencyStatus.values.length)];
+      final location =
+          _indiaBaseLocations[random.nextInt(_indiaBaseLocations.length)];
+
+      final randomLocation = LocationData(
+        latitude: location.latitude + (random.nextDouble() - 0.5) * 0.1,
+        longitude: location.longitude + (random.nextDouble() - 0.5) * 0.1,
+        address: '${location.address} Emergency Zone ${i + 1}',
+        timestamp: DateTime.now(),
+      );
+
+      final request = EmergencyRequest(
+        userId: 'user_${random.nextInt(1000)}',
+        emergencyType: emergencyType,
+        description: _generateEmergencyDescription(emergencyType),
+        location: randomLocation,
+        status: status,
+        priority: emergencyType.defaultPriority,
+        contactNumber: '+91${random.nextInt(9000000000) + 1000000000}',
+        createdAt: DateTime.now().subtract(Duration(hours: random.nextInt(48))),
+        assignedMissionId: status != EmergencyStatus.pending
+            ? 'mission_${random.nextInt(100)}'
+            : null,
+
+        updates: [],
+        images: _generateMockImageUrls(random.nextInt(3)),
+      );
+
+      requests.add(request);
+    }
+
+    return requests;
   }
 }

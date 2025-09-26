@@ -109,7 +109,7 @@ class _RequestHelpScreenState extends State<RequestHelpScreen>
         title: 'Emergency Request Submitted',
         message:
             'Your emergency request has been received and is being processed.',
-        priority: NotificationPriority.urgent,
+        priority: NotificationPriority.critical,
       );
 
       if (mounted) {
